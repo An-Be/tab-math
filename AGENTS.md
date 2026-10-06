@@ -16,6 +16,17 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Project Context & Code Quality Rules
 
+## Never Commit or Push Without Asking First
+
+**Do not run `git commit` or `git push` on your own initiative, even for a
+small, well-understood, already-verified fix.** Make the change, verify it
+(typecheck/lint/test/a real check against the database or a live endpoint
+where relevant), and then say what you'd commit and ask before doing it —
+every time, not just the first time in a session. A push here triggers a
+real production deployment on Vercel; that's a consequential, visible
+action, not a reversible local edit, and it's the user's call when it
+happens, not an inference from "this seems clearly in scope."
+
 ## Tech Stack
 
 TabMath — photograph a restaurant receipt, split it by item or evenly, share
@@ -113,17 +124,21 @@ sessions, below).
   deprecated helper was never actually needed for it.
 - Import Prisma types/client from `@/lib/generated/prisma/client`, **never**
   from `@prisma/client`.
-- `proxy.ts`'s `config.matcher` must include `"/__clerk/(.*)"` **after** the
-  `"/(api|trpc)(.*)"` entry. Clerk proxies its own frontend script
-  (`clerk-js`, `@clerk/ui`) through our own domain at that path so it loads
-  first-party rather than from Clerk's CDN — but it only works if
-  `clerkMiddleware` actually runs for that request. The static-file
-  exclusion in the main matcher (`js(?!on)`) excludes anything ending in
-  `.js`, which includes this path, so without the explicit `/__clerk/(.*)`
-  entry those requests 404 instead of Clerk's proxy logic ever seeing them.
-  This shipped broken once already — it only surfaced in production logs,
-  not locally, so don't assume it's fine just because `next dev` looks
-  clean.
+- **Production Clerk uses a dedicated subdomain, not our domain.** A
+  `pk_live_...` key has the Frontend API domain base64-encoded into it
+  (`clerk.tabmath.com` here) — clerk-js loads from *that* subdomain, not
+  from `tabmath.com`. It needs 5 CNAME records at the registrar (`accounts`,
+  `clerk`, `clk._domainkey`, `clk2._domainkey`, `clkmail` → Clerk's
+  `*.clerk.services` targets, from Clerk's dashboard once a custom domain is
+  added to the production instance) — this is DNS, not an app-code problem.
+  We initially misdiagnosed a `/__clerk/npm/...` 404 on `tabmath.com` itself
+  as a middleware-matcher bug (see the `/__clerk/(.*)` entry in `proxy.ts`'s
+  matcher) and shipped that fix; it didn't resolve the actual issue, because
+  the actual issue was those DNS records not existing yet. That matcher
+  entry stayed (it's a harmless no-op, and a prerequisite if Clerk's
+  same-origin `frontendApiProxy` fallback is ever enabled on purpose), but
+  don't mistake it for the fix if this error class resurfaces — check the
+  DNS/custom-domain setup in Clerk's dashboard first.
 - **shadcn `base-nova` has no `asChild`.** Base UI uses a `render` prop
   instead: `<Button render={<Link href="/x" />}>Label</Button>`, label as
   children rather than inside the rendered element.
