@@ -1,6 +1,7 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { useState } from "react";
+import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -33,13 +34,17 @@ type Props = {
 };
 
 export function TotalsList({ splitId, totals, paidPersonIds, onPaidChange }: Props) {
+  const [savingPersonId, setSavingPersonId] = useState<string | null>(null);
+
   async function togglePaid(personId: string, paid: boolean) {
     onPaidChange(personId, paid);
+    setSavingPersonId(personId);
     const res = await fetch(`/api/splits/${splitId}/payments/${personId}/mark-paid`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ paid }),
     });
+    setSavingPersonId(null);
     if (!res.ok) {
       toast.error("Couldn't update payment status");
       onPaidChange(personId, !paid);
@@ -69,13 +74,18 @@ export function TotalsList({ splitId, totals, paidPersonIds, onPaidChange }: Pro
                 type="button"
                 size="sm"
                 variant={paid ? "secondary" : "outline"}
+                disabled={savingPersonId === pt.personId}
                 className={cn(
                   "font-mono text-xs tracking-wide uppercase",
                   paid && "text-muted-foreground"
                 )}
                 onClick={() => togglePaid(pt.personId, !paid)}
               >
-                {paid && <Check className="size-3.5" />}
+                {savingPersonId === pt.personId ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  paid && <Check className="size-3.5" />
+                )}
                 {paid ? "Paid" : "Mark paid"}
               </Button>
             </div>

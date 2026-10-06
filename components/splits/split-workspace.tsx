@@ -97,15 +97,19 @@ export function SplitWorkspace({
     refreshTotals();
   }
 
+  // These two don't refreshTotals() themselves — TaxTipMode and
+  // EvenSplitToggle each call onSaved (= refreshTotals) only once their own
+  // PATCH has actually resolved. Doing it here instead, synchronously with
+  // the optimistic state update, would race the GET /totals against the
+  // PATCH that's still in flight — the totals could get computed from the
+  // not-yet-updated database row and nothing would re-fetch afterward.
   function handleTaxTipChange(patch: { taxCents?: number; tipCents?: number }) {
     if (patch.taxCents !== undefined) setTaxCents(patch.taxCents);
     if (patch.tipCents !== undefined) setTipCents(patch.tipCents);
-    refreshTotals();
   }
 
   function handleModeChange(newMode: SplitMode) {
     setMode(newMode);
-    refreshTotals();
   }
 
   async function toggleAssignment(lineItemId: string, personId: string) {
@@ -171,7 +175,12 @@ export function SplitWorkspace({
           <CardTitle className={sectionLabel}>03 — Even split</CardTitle>
         </CardHeader>
         <CardContent>
-          <EvenSplitToggle splitId={splitId} mode={mode} onChange={handleModeChange} />
+          <EvenSplitToggle
+            splitId={splitId}
+            mode={mode}
+            onChange={handleModeChange}
+            onSaved={refreshTotals}
+          />
         </CardContent>
       </Card>
 
@@ -218,6 +227,7 @@ export function SplitWorkspace({
             taxCents={taxCents}
             tipCents={tipCents}
             onChange={handleTaxTipChange}
+            onSaved={refreshTotals}
           />
         </CardContent>
       </Card>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import type { SplitMode } from "@/lib/generated/prisma/client";
@@ -8,9 +10,12 @@ type Props = {
   splitId: string;
   mode: SplitMode;
   onChange: (mode: SplitMode) => void;
+  onSaved: () => void;
 };
 
-export function EvenSplitToggle({ splitId, mode, onChange }: Props) {
+export function EvenSplitToggle({ splitId, mode, onChange, onSaved }: Props) {
+  const [saving, setSaving] = useState(false);
+
   async function patch(newMode: SplitMode) {
     const res = await fetch(`/api/splits/${splitId}`, {
       method: "PATCH",
@@ -32,15 +37,30 @@ export function EvenSplitToggle({ splitId, mode, onChange }: Props) {
           Skip assignment — divide everything equally.
         </p>
       </div>
-      <Switch
-        checked={mode === "EVEN"}
-        onCheckedChange={async (checked) => {
-          const newMode: SplitMode = checked ? "EVEN" : "ITEMIZED";
-          onChange(newMode);
-          const ok = await patch(newMode);
-          if (!ok) onChange(mode);
-        }}
-      />
+      <div className="flex items-center gap-2">
+        {saving && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+        <Switch
+          checked={mode === "EVEN"}
+          disabled={saving}
+          onCheckedChange={async (checked) => {
+            const newMode: SplitMode = checked ? "EVEN" : "ITEMIZED";
+            // Optimistic: the switch is a controlled component, so it needs
+            // this to flip immediately rather than waiting on the network.
+            onChange(newMode);
+            setSaving(true);
+            const ok = await patch(newMode);
+            setSaving(false);
+            if (ok) {
+              // Only now, once the database actually has the new mode, is it
+              // safe to refetch totals — doing it alongside the optimistic
+              // onChange above would race the save and could read the old mode.
+              onSaved();
+            } else {
+              onChange(mode);
+            }
+          }}
+        />
+      </div>
     </div>
   );
 }

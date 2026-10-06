@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +11,7 @@ type Props = {
   taxCents: number;
   tipCents: number;
   onChange: (patch: { taxCents?: number; tipCents?: number }) => void;
+  onSaved: () => void;
 };
 
 function centsToDollarsStr(cents: number) {
@@ -20,7 +23,9 @@ function dollarsStrToCents(value: string) {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
-export function TaxTipMode({ splitId, taxCents, tipCents, onChange }: Props) {
+export function TaxTipMode({ splitId, taxCents, tipCents, onChange, onSaved }: Props) {
+  const [savingField, setSavingField] = useState<"tax" | "tip" | null>(null);
+
   async function patch(body: Record<string, unknown>) {
     const res = await fetch(`/api/splits/${splitId}`, {
       method: "PATCH",
@@ -50,16 +55,27 @@ export function TaxTipMode({ splitId, taxCents, tipCents, onChange }: Props) {
             type="number"
             step="0.01"
             min={0}
-            className="pl-6 font-mono tabular-nums"
+            disabled={savingField === "tax"}
+            className="pl-6 font-mono tabular-nums disabled:opacity-60"
             defaultValue={centsToDollarsStr(taxCents)}
             onBlur={async (e) => {
               const cents = dollarsStrToCents(e.target.value);
               if (cents === taxCents) return;
-              onChange({ taxCents: cents });
+              // Wait for the save to actually land before telling the parent
+              // anything changed — otherwise a totals refresh triggered off
+              // this could race ahead of the PATCH and read the old value.
+              setSavingField("tax");
               const ok = await patch({ taxCents: cents });
-              if (!ok) onChange({ taxCents });
+              setSavingField(null);
+              if (ok) {
+                onChange({ taxCents: cents });
+                onSaved();
+              }
             }}
           />
+          {savingField === "tax" && (
+            <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+          )}
         </div>
       </div>
 
@@ -77,16 +93,24 @@ export function TaxTipMode({ splitId, taxCents, tipCents, onChange }: Props) {
             type="number"
             step="0.01"
             min={0}
-            className="pl-6 font-mono tabular-nums"
+            disabled={savingField === "tip"}
+            className="pl-6 font-mono tabular-nums disabled:opacity-60"
             defaultValue={centsToDollarsStr(tipCents)}
             onBlur={async (e) => {
               const cents = dollarsStrToCents(e.target.value);
               if (cents === tipCents) return;
-              onChange({ tipCents: cents });
+              setSavingField("tip");
               const ok = await patch({ tipCents: cents });
-              if (!ok) onChange({ tipCents });
+              setSavingField(null);
+              if (ok) {
+                onChange({ tipCents: cents });
+                onSaved();
+              }
             }}
           />
+          {savingField === "tip" && (
+            <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+          )}
         </div>
       </div>
     </div>
