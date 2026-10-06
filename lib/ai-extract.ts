@@ -3,7 +3,11 @@ import sharp from "sharp";
 import { createHash } from "crypto";
 
 const MAX_DIMENSION = 1568;
-const MODEL = "gemini-3.8-flash";
+// Primary, then a sibling model as a fallback if the primary keeps failing —
+// a different model is often a separate capacity pool, so a demand spike
+// that 503s one doesn't necessarily affect the other. Both verified to
+// support image input + responseJsonSchema before being wired in here.
+const MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"] as const;
 
 export type ExtractedLineItem = {
   label: string;
@@ -106,9 +110,9 @@ export async function extractLineItems(
 ): Promise<ExtractResult> {
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-  const call = () =>
+  const call = (model: string) =>
     client.models.generateContent({
-      model: MODEL,
+      model,
       contents: [
         {
           role: "user",
@@ -124,25 +128,30 @@ export async function extractLineItems(
       },
     });
 
-  const maxAttempts = 3;
+  const attemptsPerModel = 2;
   let lastError: unknown;
+  let lastText = "";
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      const response = await call();
-      const text = response.text ?? "";
-      const receipt = parseReceipt(text);
-      if (receipt) return { ok: true, receipt };
-      if (attempt === maxAttempts - 1) return { ok: false, rawText: text };
-    } catch (err) {
-      // Transient upstream errors (503 "high demand", rate limits, network
-      // blips) throw instead of returning malformed text — back off and
-      // retry those too, not just unparseable responses.
-      lastError = err;
-      if (attempt < maxAttempts - 1) {
+  for (const model of MODELS) {
+    for (let attempt = 0; attempt < attemptsPerModel; attempt++) {
+      try {
+        const response = await call(model);
+        const text = response.text ?? "";
+        const receipt = parseReceipt(text);
+        if (receipt) return { ok: true, receipt };
+        lastText = text;
+      } catch (err) {
+        // Transient upstream errors (503 "high demand", rate limits, network
+        // blips) throw instead of returning malformed text — back off and
+        // retry those too, not just unparseable responses.
+        lastError = err;
+      }
+      const isLastAttemptOverall =
+        model === MODELS[MODELS.length - 1] && attempt === attemptsPerModel - 1;
+      if (!isLastAttemptOverall) {
         await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
       }
     }
   }
-  return { ok: false, rawText: lastError instanceof Error ? lastError.message : "" };
+  return { ok: false, rawText: lastText || (lastError instanceof Error ? lastError.message : "") };
 }

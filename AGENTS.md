@@ -115,7 +115,16 @@ sessions, below).
   not free-text parsing. Model name has moved once already
   (`gemini-2.5-flash` → `gemini-3.8-flash` after Google deprecated the
   former) — if extraction starts 404ing, that's almost certainly a model
-  rename again; check the error message, it names the replacement.
+  rename again; check the error message, it names the replacement, or query
+  `GET /v1beta/models?key=...` directly for what's currently live rather
+  than guessing. `MODELS` in `ai-extract.ts` is an ordered list, not a single
+  model — after exhausting retries on the primary (`gemini-3.8-flash`), it
+  falls back to a sibling (`gemini-3.5-flash-lite`), since a 503 on one model
+  doesn't necessarily mean the other is also under demand pressure. Verify
+  any new fallback candidate actually supports image input +
+  `responseJsonSchema` before adding it — not all models do, and `generateContent`
+  support alone (what the models-list endpoint reports) doesn't guarantee
+  either.
 - **Zod 4** — all external input validation. Object schemas strip unknown
   keys by default, which is why mass-assignment isn't a concern on the PATCH
   routes — don't switch any of them to `.passthrough()`.
@@ -360,12 +369,17 @@ audit, Postgres-backed rate limiting, connection pool sizing) and an
 aesthetic system (monochrome, geometric, typographic — see `app/globals.css`
 and the numbered-section convention in `SplitWorkspace`).
 
-**Testing:** Vitest (`npm test` / `npm run test:watch`). Currently covers the
-two pure `lib/` modules with no DB dependency — `lib/totals.ts` (every
+**Testing:** Vitest (`npm test` / `npm run test:watch`). Covers two pure
+`lib/` modules with no DB dependency — `lib/totals.ts` (every
 proration/remainder-penny edge case, both split modes, the spec's own
 acceptance-criteria example) and `lib/payment-links.ts` (handle parsing for
-every provider). Anything pure belongs in a `*.test.ts` next to the module it
-tests. `lib/rate-limit.ts` is deliberately not unit-tested — it's a thin
+every provider) — plus `lib/ai-extract.ts`'s model-fallback control flow,
+which mocks `@google/genai`'s `GoogleGenAI` class rather than hitting the
+real API (note: that mock must be a real `function`, not an arrow function —
+`ai-extract.ts` calls `new GoogleGenAI(...)`, and arrow functions can't be
+constructors, which fails with a cryptic "is not a constructor" rather than
+a useful message). Anything pure belongs in a `*.test.ts` next to the module
+it tests. `lib/rate-limit.ts` is deliberately not unit-tested — it's a thin
 wrapper around one Postgres upsert, and the thing worth verifying (no race
 under real concurrency) was already exercised with a one-off script against
 live Neon rather than a mock; a real integration test for it would need a
