@@ -1,0 +1,140 @@
+// Prisma schema for Bill Splitter MVP
+// https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SplitMode {
+  ITEMIZED
+  EVEN
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+}
+
+model User {
+  id             String  @id // Clerk user id, or a generated guest id
+  email          String  @unique
+  isGuest        Boolean @default(false)
+  paymentHandles Json    @default("{}") // { venmo?, cashapp?, zelle?, stripeLink? }
+  splits         Split[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Split {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  restaurantName  String?
+  receiptImageUrl String?
+  receiptImageSha String?
+  taxCents        Int       @default(0)
+  tipCents        Int       @default(0)
+  mode            SplitMode @default(ITEMIZED)
+  shareToken      String    @unique @default(cuid())
+
+  people    Person[]
+  items     LineItem[]
+  payments  Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Person {
+  id      String @id @default(cuid())
+  splitId String
+  split   Split  @relation(fields: [splitId], references: [id], onDelete: Cascade)
+  name    String
+
+  assignments Assignment[]
+  payments    Payment[]
+
+  createdAt DateTime @default(now())
+
+  @@index([splitId])
+}
+
+model LineItem {
+  id        String @id @default(cuid())
+  splitId   String
+  split     Split  @relation(fields: [splitId], references: [id], onDelete: Cascade)
+  label     String
+  priceCents Int
+  quantity  Int    @default(1)
+  sortOrder Int    @default(0)
+
+  assignments Assignment[]
+
+  createdAt DateTime @default(now())
+
+  @@index([splitId])
+}
+
+model Assignment {
+  id         String   @id @default(cuid())
+  lineItemId String
+  lineItem   LineItem @relation(fields: [lineItemId], references: [id], onDelete: Cascade)
+  personId   String
+  person     Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([lineItemId, personId])
+  @@index([lineItemId])
+  @@index([personId])
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  splitId     String
+  split       Split         @relation(fields: [splitId], references: [id], onDelete: Cascade)
+  personId    String
+  person      Person        @relation(fields: [personId], references: [id], onDelete: Cascade)
+  amountCents Int
+  status      PaymentStatus @default(PENDING)
+  paidAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([splitId, personId])
+  @@index([splitId])
+}
+
+// Fixed-window rate limiting, backed by Postgres rather than a separate
+// service — low enough volume that the DB handles it fine, and it avoids
+// provisioning Redis/Upstash just for this.
+model RateLimitHit {
+  key         String
+  windowStart DateTime
+  count       Int      @default(1)
+
+  @@unique([key, windowStart])
+  @@index([windowStart])
+}
+
+// Demand signal for not-yet-built features — e.g. the landing page's "I'd
+// use this" button for self-claim items. No personal data: just a count of
+// who clicked, by feature key, so it's easy to check later whether a
+// proposed feature is actually wanted before building it.
+model FeatureInterest {
+  id        String   @id @default(cuid())
+  feature   String
+  createdAt DateTime @default(now())
+
+  @@index([feature])
+}

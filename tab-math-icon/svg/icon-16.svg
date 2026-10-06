@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" shape-rendering="crispEdges">
+  <title>Tab Math (16px pixel-snapped)</title>
+  <rect width="16" height="16" fill="#000000"/>
+  <g fill="#FFFFFF">
+    <!-- top piece: steps down left to right along the cut -->
+    <rect x="4" y="2" width="2" height="7"/>
+    <rect x="6" y="2" width="2" height="6"/>
+    <rect x="8" y="2" width="2" height="5"/>
+    <rect x="10" y="2" width="2" height="4"/>
+    <!-- bottom piece, 2px cut gap, toothed bottom edge -->
+    <rect x="4" y="11" width="2" height="3"/>
+    <rect x="6" y="10" width="2" height="3"/>
+    <rect x="8" y="9" width="2" height="5"/>
+    <rect x="10" y="8" width="2" height="5"/>
+  </g>
+</svg>

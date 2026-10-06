@@ -1,0 +1,148 @@
+import { GoogleGenAI } from "@google/genai";
+import sharp from "sharp";
+import { createHash } from "crypto";
+
+const MAX_DIMENSION = 1568;
+const MODEL = "gemini-3.8-flash";
+
+export type ExtractedLineItem = {
+  label: string;
+  priceCents: number;
+  quantity: number;
+};
+
+export type ExtractedReceipt = {
+  items: ExtractedLineItem[];
+  taxCents: number | null;
+  tipCents: number | null;
+};
+
+export type ExtractResult =
+  | { ok: true; receipt: ExtractedReceipt }
+  | { ok: false; rawText: string };
+
+const EXTRACTION_PROMPT = `You are reading a restaurant receipt photo. Extract:
+
+1. "items": every purchasable line item (food, drinks, etc). Do NOT include tax, tip, gratuity, service charge, subtotal, or total lines as items — those are reported separately below.
+   - "priceCents" is the line's unit price in integer cents (no decimals, no currency symbols).
+   - "quantity" is the integer quantity for that line (default 1 if not shown).
+   - "label" is a short human-readable name for the item.
+2. "taxCents": the printed tax amount, in integer cents. Use null if no tax line is printed on the receipt.
+3. "tipCents": the printed tip/gratuity amount, in integer cents. Use null if no tip line is printed (most receipts don't have one — the customer adds it later, that's expected).`;
+
+const RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          label: { type: "string" },
+          priceCents: { type: "integer" },
+          quantity: { type: "integer" },
+        },
+        required: ["label", "priceCents", "quantity"],
+      },
+    },
+    taxCents: { anyOf: [{ type: "integer" }, { type: "null" }] },
+    tipCents: { anyOf: [{ type: "integer" }, { type: "null" }] },
+  },
+  required: ["items", "taxCents", "tipCents"],
+};
+
+export async function downscaleAndHash(
+  imageBuffer: Buffer
+): Promise<{ base64: string; mediaType: "image/jpeg"; sha256: string }> {
+  const resized = await sharp(imageBuffer)
+    .rotate()
+    .resize(MAX_DIMENSION, MAX_DIMENSION, { fit: "inside", withoutEnlargement: true })
+    .jpeg({ quality: 85 })
+    .toBuffer();
+
+  return {
+    base64: resized.toString("base64"),
+    mediaType: "image/jpeg",
+    sha256: createHash("sha256").update(imageBuffer).digest("hex"),
+  };
+}
+
+function parseCents(value: unknown): number | null {
+  return Number.isFinite(value) && (value as number) >= 0 ? Math.round(value as number) : null;
+}
+
+function parseReceipt(text: string): ExtractedReceipt | null {
+  const trimmed = text.trim();
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+  try {
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!parsed || !Array.isArray(parsed.items)) return null;
+    const items = parsed.items
+      .filter(
+        (i: { label?: unknown; priceCents?: unknown }) =>
+          typeof i?.label === "string" &&
+          Number.isFinite(i?.priceCents) &&
+          (i.priceCents as number) >= 0
+      )
+      .map((i: { label: string; priceCents: number; quantity?: unknown }) => ({
+        label: String(i.label).slice(0, 200),
+        priceCents: Math.round(i.priceCents),
+        quantity: Number.isFinite(i.quantity) && (i.quantity as number) > 0 ? Math.round(i.quantity as number) : 1,
+      }));
+    return {
+      items,
+      taxCents: parseCents(parsed.taxCents),
+      tipCents: parseCents(parsed.tipCents),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function extractLineItems(
+  base64Image: string,
+  mediaType: "image/jpeg"
+): Promise<ExtractResult> {
+  const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+  const call = () =>
+    client.models.generateContent({
+      model: MODEL,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { inlineData: { mimeType: mediaType, data: base64Image } },
+            { text: EXTRACTION_PROMPT },
+          ],
+        },
+      ],
+      config: {
+        responseMimeType: "application/json",
+        responseJsonSchema: RESPONSE_SCHEMA,
+      },
+    });
+
+  const maxAttempts = 3;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const response = await call();
+      const text = response.text ?? "";
+      const receipt = parseReceipt(text);
+      if (receipt) return { ok: true, receipt };
+      if (attempt === maxAttempts - 1) return { ok: false, rawText: text };
+    } catch (err) {
+      // Transient upstream errors (503 "high demand", rate limits, network
+      // blips) throw instead of returning malformed text — back off and
+      // retry those too, not just unparseable responses.
+      lastError = err;
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+      }
+    }
+  }
+  return { ok: false, rawText: lastError instanceof Error ? lastError.message : "" };
+}
