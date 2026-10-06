@@ -58,5 +58,11 @@ export const config = {
   matcher: [
     "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     "/(api|trpc)(.*)",
+    // Clerk proxies its own frontend script through our domain at this
+    // path (first-party script loading). The static-file exclusion above
+    // ends in `js(?!on)`, which also excludes this path since it ends in
+    // `.js` — without this line clerkMiddleware never runs for it and
+    // Next.js 404s it instead of letting Clerk's proxy logic handle it.
+    "/__clerk/(.*)",
   ],
 };

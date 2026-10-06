@@ -113,6 +113,17 @@ sessions, below).
   deprecated helper was never actually needed for it.
 - Import Prisma types/client from `@/lib/generated/prisma/client`, **never**
   from `@prisma/client`.
+- `proxy.ts`'s `config.matcher` must include `"/__clerk/(.*)"` **after** the
+  `"/(api|trpc)(.*)"` entry. Clerk proxies its own frontend script
+  (`clerk-js`, `@clerk/ui`) through our own domain at that path so it loads
+  first-party rather than from Clerk's CDN — but it only works if
+  `clerkMiddleware` actually runs for that request. The static-file
+  exclusion in the main matcher (`js(?!on)`) excludes anything ending in
+  `.js`, which includes this path, so without the explicit `/__clerk/(.*)`
+  entry those requests 404 instead of Clerk's proxy logic ever seeing them.
+  This shipped broken once already — it only surfaced in production logs,
+  not locally, so don't assume it's fine just because `next dev` looks
+  clean.
 - **shadcn `base-nova` has no `asChild`.** Base UI uses a `render` prop
   instead: `<Button render={<Link href="/x" />}>Label</Button>`, label as
   children rather than inside the rendered element.
@@ -375,10 +386,17 @@ this blindly if time has passed:
   aren't meant for real production traffic. Promoting to a production
   instance means adding a custom domain in Clerk's dashboard. Fine to defer
   for a soft launch; shouldn't be deferred indefinitely.
-- **Local dev and "production" share one Neon branch** (just `production` —
-  no `dev` branch exists). Every local test run hits the same database a
-  real deployment would use. Worth creating a separate branch
-  (`neon branches create`) and pointing local `.env` at it before this sees
-  real traffic, so local testing stops mixing with real data.
+- **Done:** local dev and "production" now use separate Neon branches.
+  `production` (`br-bold-sunset-b5sclpxc`) is the deploy target — set
+  Vercel's `DATABASE_URL` to that branch's direct connection string, not
+  local `.env`'s. Local `.env` points at `dev` (`br-shiny-sun-b5b03m3t`),
+  created with `--schema-only` off `production`. One gotcha worth knowing if
+  you ever do this again: `--schema-only` copies table *structure*
+  (including enum types) but wipes all row data, **including the
+  `_prisma_migrations` bookkeeping table itself** — so `migrate deploy`
+  against a schema-only branch tries to re-run `init` from scratch and fails
+  on `type "X" already exists`, even though the schema is already correct.
+  Fix is `prisma migrate resolve --applied <name>` for each migration in
+  order, not `migrate deploy`.
 - Run a real production build locally (`npm run build && npm start`) before
   the first deploy — catches anything that only breaks outside `next dev`.
