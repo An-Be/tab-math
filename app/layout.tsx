@@ -1,4 +1,5 @@
 import { ClerkProvider, SignInButton, SignUpButton, UserButton, Show } from "@clerk/nextjs";
+import { shadcn } from "@clerk/ui/themes";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
@@ -32,7 +33,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <ClerkProvider>
+        <ClerkProvider
+          appearance={{
+            theme: shadcn,
+            variables: { borderRadius: "0.125rem" },
+          }}
+        >
           <header className="flex items-center justify-between border-b px-4 py-3">
             <Link
               href="/"

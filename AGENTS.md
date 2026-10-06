@@ -89,7 +89,16 @@ sessions, below).
 
 ### Services
 
-- **Clerk 7.9** (`@clerk/nextjs`) — organizer accounts; payers never see Clerk
+- **Clerk 7.9** (`@clerk/nextjs`) — organizer accounts; payers never see Clerk.
+  Themed via `@clerk/ui`'s `shadcn` theme (`appearance={{ theme: shadcn,
+  variables: { borderRadius: "0.125rem" } }}` on `ClerkProvider`, plus
+  `@import "@clerk/ui/themes/shadcn.css"` in `globals.css`) — not optional
+  polish: Clerk's *unthemed* modal had a real bug where its footer strip
+  ("Sign up" / "Secured by Clerk") wasn't fully covered by the modal's own
+  backdrop, letting page content behind it bleed through visually. The theme
+  fixed that as a side effect of giving the modal one solid, opaque surface.
+  Google OAuth is enabled on both Clerk instances (intentional, not a
+  leftover default) alongside email-code.
 - **Guest sessions** (`lib/get-current-actor.ts`, `proxy.ts`) — an organizer
   can use the whole app with zero sign-up. `proxy.ts` issues a `guest_id`
   cookie (httpOnly, `sameSite: lax`, `secure` in production,
