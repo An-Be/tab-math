@@ -8,6 +8,11 @@ const MAX_DIMENSION = 1568;
 // that 503s one doesn't necessarily affect the other. Both verified to
 // support image input + responseJsonSchema before being wired in here.
 const MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"] as const;
+// Per-call cap. Without it a stalled Gemini request hangs until Vercel kills
+// the whole function, and the organizer stares at a spinner for minutes.
+// Worst case across every attempt: 4 x 20s + ~2s of backoff, under the
+// route's maxDuration.
+export const GEMINI_CALL_TIMEOUT_MS = 20_000;
 
 export type ExtractedLineItem = {
   label: string;
@@ -130,6 +135,7 @@ export async function extractLineItems(
         },
       ],
       config: {
+        httpOptions: { timeout: GEMINI_CALL_TIMEOUT_MS },
         responseMimeType: "application/json",
         responseJsonSchema: RESPONSE_SCHEMA,
       },
@@ -141,21 +147,29 @@ export async function extractLineItems(
 
   for (const model of MODELS) {
     for (let attempt = 0; attempt < attemptsPerModel; attempt++) {
+      const startedAt = Date.now();
       try {
         const response = await call(model);
         const text = response.text ?? "";
         const receipt = parseReceipt(text);
-        if (receipt) return { ok: true, receipt };
+        if (receipt) {
+          console.info(`[extract] ${model} attempt ${attempt + 1}: ok in ${Date.now() - startedAt}ms`);
+          return { ok: true, receipt };
+        }
         lastText = text;
         // Length only, never the text itself: it's the contents of someone's
         // receipt.
-        console.warn(`[extract] ${model} attempt ${attempt + 1}: unparseable response (${text.length} chars)`);
+        console.warn(
+          `[extract] ${model} attempt ${attempt + 1}: unparseable response (${text.length} chars) after ${Date.now() - startedAt}ms`
+        );
       } catch (err) {
         // Transient upstream errors (503 "high demand", rate limits, network
-        // blips) throw instead of returning malformed text — back off and
-        // retry those too, not just unparseable responses.
+        // blips, our own timeout) throw instead of returning malformed text —
+        // back off and retry those too, not just unparseable responses.
         lastError = err;
-        console.warn(`[extract] ${model} attempt ${attempt + 1}: ${describeError(err)}`);
+        console.warn(
+          `[extract] ${model} attempt ${attempt + 1}: ${describeError(err)} after ${Date.now() - startedAt}ms`
+        );
       }
       const isLastAttemptOverall =
         model === MODELS[MODELS.length - 1] && attempt === attemptsPerModel - 1;

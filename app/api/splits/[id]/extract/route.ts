@@ -6,6 +6,11 @@ import { downscaleAndHash, extractLineItems } from "@/lib/ai-extract";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/client-ip";
 
+// Explicit ceiling, above the worst case of every Gemini attempt timing out
+// (see GEMINI_CALL_TIMEOUT_MS in lib/ai-extract.ts), so the route always
+// gets to answer the client instead of being killed mid-retry.
+export const maxDuration = 120;
+
 const extractSchema = z.object({
   imageUrl: z.string().url(),
 });
