@@ -104,6 +104,13 @@ function parseReceipt(text: string): ExtractedReceipt | null {
   }
 }
 
+/** Error summary safe to log: the message only, capped, with anything that
+ * looks like an API key masked in case an SDK ever echoes a request URL. */
+function describeError(err: unknown): string {
+  const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+  return message.replace(/key=[^&\s"]+/gi, "key=[redacted]").slice(0, 300);
+}
+
 export async function extractLineItems(
   base64Image: string,
   mediaType: "image/jpeg"
@@ -140,11 +147,15 @@ export async function extractLineItems(
         const receipt = parseReceipt(text);
         if (receipt) return { ok: true, receipt };
         lastText = text;
+        // Length only, never the text itself: it's the contents of someone's
+        // receipt.
+        console.warn(`[extract] ${model} attempt ${attempt + 1}: unparseable response (${text.length} chars)`);
       } catch (err) {
         // Transient upstream errors (503 "high demand", rate limits, network
         // blips) throw instead of returning malformed text — back off and
         // retry those too, not just unparseable responses.
         lastError = err;
+        console.warn(`[extract] ${model} attempt ${attempt + 1}: ${describeError(err)}`);
       }
       const isLastAttemptOverall =
         model === MODELS[MODELS.length - 1] && attempt === attemptsPerModel - 1;

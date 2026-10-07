@@ -13,17 +13,22 @@ const extractSchema = z.object({
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const result = await requireSplitOwner(id);
-  if ("error" in result) return result.error;
+  if ("error" in result) {
+    console.warn(`[extract] rejected: split not owned by caller (${result.error.status})`);
+    return result.error;
+  }
 
   const body = await request.json().catch(() => null);
   const parsed = extractSchema.safeParse(body);
   if (!parsed.success) {
+    console.warn("[extract] rejected: invalid request body");
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
   const { imageUrl } = parsed.data;
 
   const imageResponse = await fetch(imageUrl);
   if (!imageResponse.ok) {
+    console.warn(`[extract] could not fetch uploaded image: HTTP ${imageResponse.status}`);
     return NextResponse.json({ error: "Could not fetch receipt image" }, { status: 400 });
   }
   const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
@@ -50,6 +55,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const ip = await getClientIp();
   const rateLimit = await checkRateLimit(`extract:${ip}`, { limit: 10, windowSeconds: 600 });
   if (!rateLimit.allowed) {
+    console.warn("[extract] rate limited");
     return NextResponse.json(
       { error: "Too many receipt scans — try again in a bit." },
       { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
@@ -59,6 +65,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const extraction = await extractLineItems(base64, mediaType);
 
   if (!extraction.ok) {
+    console.warn("[extract] failed after all model attempts (see attempt lines above)");
     await prisma.split.update({ where: { id }, data: { receiptImageUrl: imageUrl } });
     return NextResponse.json({ ok: false, rawText: extraction.rawText });
   }
