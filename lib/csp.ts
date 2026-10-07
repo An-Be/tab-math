@@ -13,8 +13,14 @@ import type { ClerkMiddlewareOptions } from "@clerk/nextjs/server";
  * REPORT-ONLY for now: browsers report what this would block to
  * /api/csp-report but block nothing. Flip `reportOnly` to false only after
  * the reports have gone quiet across sign-in, receipt upload and the payer
- * view. frame-ancestors is enforced separately in next.config.ts, since
- * browsers ignore it in a report-only policy.
+ * view. frame-ancestors is listed below but browsers ignore it in a
+ * report-only policy; X-Frame-Options (next.config.ts) covers clickjacking
+ * until this is enforced.
+ *
+ * This must stay the ONLY Content-Security-Policy header on the response.
+ * Next reads the nonce from the request's CSP header, checking the enforced
+ * header before the report-only one, so any other nonce-less CSP header
+ * would leave Next's scripts untagged.
  */
 export const CSP_REPORT_PATH = "/api/csp-report";
 
@@ -36,6 +42,7 @@ export const contentSecurityPolicy: NonNullable<ClerkMiddlewareOptions["contentS
     "font-src": ["self"],
     "object-src": ["none"],
     "base-uri": ["self"],
+    "frame-ancestors": ["none"],
     // report-to (above) covers Chromium; Safari and Firefox still only
     // understand the older report-uri.
     "report-uri": [CSP_REPORT_PATH],
