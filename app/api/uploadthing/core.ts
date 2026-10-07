@@ -3,6 +3,7 @@ import { UploadThingError } from "uploadthing/server";
 import { getCurrentActor } from "@/lib/get-current-actor";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/client-ip";
+import { RECEIPT_MESSAGES } from "@/lib/receipt-errors";
 
 const f = createUploadthing();
 
@@ -15,7 +16,7 @@ export const ourFileRouter = {
       const ip = await getClientIp();
       const rateLimit = await checkRateLimit(`upload:${ip}`, { limit: 15, windowSeconds: 600 });
       if (!rateLimit.allowed) {
-        throw new UploadThingError("Too many uploads — try again in a bit.");
+        throw new UploadThingError(RECEIPT_MESSAGES.uploadRateLimited);
       }
 
       return { userId: actor.id };

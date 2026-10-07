@@ -5,6 +5,7 @@ import { Camera, Loader2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useUploadThing } from "@/lib/uploadthing";
+import { RECEIPT_MESSAGES, extractErrorMessage, readJsonSafely } from "@/lib/receipt-errors";
 import type { LineItem } from "@/lib/generated/prisma/client";
 
 type Props = {
@@ -25,9 +26,14 @@ export function ReceiptUploader({
   const [preview, setPreview] = useState<string | null>(receiptImageUrl);
 
   const { startUpload, isUploading } = useUploadThing("receiptImage", {
+    // Uploadthing's own messages can be technical; only our rate-limit
+    // message is written for people, so anything else gets the plain one.
     onUploadError: (error) => {
-      toast.error(error.message || "Upload failed. Try again.");
-      setExtracting(false);
+      toast.error(
+        error.message === RECEIPT_MESSAGES.uploadRateLimited
+          ? RECEIPT_MESSAGES.uploadRateLimited
+          : RECEIPT_MESSAGES.uploadFailed
+      );
     },
   });
 
@@ -36,28 +42,47 @@ export function ReceiptUploader({
     setExtracting(true);
     try {
       const uploaded = await startUpload([file]);
-      const imageUrl = uploaded?.[0]?.serverData?.url;
-      if (!imageUrl) throw new Error("No upload URL returned");
+      // undefined: onUploadError above already told them what happened.
+      if (!uploaded) {
+        onExtractFailed("");
+        return;
+      }
+      const imageUrl = uploaded[0]?.serverData?.url;
+      if (!imageUrl) {
+        toast.error(RECEIPT_MESSAGES.uploadFailed);
+        onExtractFailed("");
+        return;
+      }
 
       const res = await fetch(`/api/splits/${splitId}/extract`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageUrl }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Extraction failed");
-
-      if (data.ok) {
-        onExtracted(data.items, data.taxCents, data.tipCents);
-      } else {
-        onExtractFailed(data.rawText ?? "");
+      // A platform timeout answers with an HTML error page, not JSON, so the
+      // body is parsed defensively rather than with a bare res.json().
+      const data = await readJsonSafely(res);
+      if (!res.ok) {
+        toast.error(extractErrorMessage(res.status, data));
+        onExtractFailed("");
+        return;
       }
-    } catch (err) {
-      const message =
-        err instanceof Error && err.message
-          ? err.message
-          : "Couldn't read the receipt. Add items manually below.";
-      toast.error(message);
+
+      const result = data as {
+        ok?: boolean;
+        items?: LineItem[];
+        taxCents?: number;
+        tipCents?: number;
+        rawText?: string;
+      } | null;
+      if (result?.ok && result.items) {
+        onExtracted(result.items, result.taxCents ?? 0, result.tipCents ?? 0);
+      } else {
+        onExtractFailed(result?.rawText ?? "");
+      }
+    } catch {
+      // Network drop or anything unexpected: never show the raw error.
+      toast.error(RECEIPT_MESSAGES.generic);
       onExtractFailed("");
     } finally {
       setExtracting(false);

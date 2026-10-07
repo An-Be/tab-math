@@ -34,7 +34,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const imageResponse = await fetch(imageUrl);
   if (!imageResponse.ok) {
     console.warn(`[extract] could not fetch uploaded image: HTTP ${imageResponse.status}`);
-    return NextResponse.json({ error: "Could not fetch receipt image" }, { status: 400 });
+    return NextResponse.json({ error: "Couldn't load that photo. Try uploading it again." }, { status: 400 });
   }
   const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
   const { base64, mediaType, sha256 } = await downscaleAndHash(imageBuffer);
