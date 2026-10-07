@@ -10,8 +10,8 @@ const MAX_DIMENSION = 1568;
 const MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"] as const;
 // Per-call cap. Without it a stalled Gemini request hangs until Vercel kills
 // the whole function, and the organizer stares at a spinner for minutes.
-// Worst case across every attempt: 4 x 20s + ~2s of backoff, under the
-// route's maxDuration.
+// Worst case across every attempt: 4 x 20s + ~2s of backoff (only when the
+// primary fails in ways that aren't overload), under the route's maxDuration.
 export const GEMINI_CALL_TIMEOUT_MS = 20_000;
 
 export type ExtractedLineItem = {
@@ -109,6 +109,20 @@ function parseReceipt(text: string): ExtractedReceipt | null {
   }
 }
 
+/**
+ * "This model is busy" errors: overloaded (503 UNAVAILABLE), rate limited
+ * (429 RESOURCE_EXHAUSTED), or too slow (504 DEADLINE_EXCEEDED, our own
+ * timeout). Retrying the same model right away rarely helps, while the
+ * fallback is a separate capacity pool, so these skip straight to it.
+ */
+function isOverloadError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const status = (err as { status?: unknown }).status;
+  if (status === 429 || status === 503 || status === 504) return true;
+  if (err.name === "AbortError" || err.name === "TimeoutError") return true;
+  return /UNAVAILABLE|RESOURCE_EXHAUSTED|DEADLINE_EXCEEDED|high demand|timed? ?out/i.test(err.message);
+}
+
 /** Error summary safe to log: the message only, capped, with anything that
  * looks like an API key masked in case an SDK ever echoes a request URL. */
 function describeError(err: unknown): string {
@@ -146,8 +160,10 @@ export async function extractLineItems(
   let lastText = "";
 
   for (const model of MODELS) {
+    const isLastModel = model === MODELS[MODELS.length - 1];
     for (let attempt = 0; attempt < attemptsPerModel; attempt++) {
       const startedAt = Date.now();
+      let skipToNextModel = false;
       try {
         const response = await call(model);
         const text = response.text ?? "";
@@ -167,10 +183,13 @@ export async function extractLineItems(
         // blips, our own timeout) throw instead of returning malformed text —
         // back off and retry those too, not just unparseable responses.
         lastError = err;
+        skipToNextModel = !isLastModel && isOverloadError(err);
         console.warn(
-          `[extract] ${model} attempt ${attempt + 1}: ${describeError(err)} after ${Date.now() - startedAt}ms`
+          `[extract] ${model} attempt ${attempt + 1}: ${describeError(err)} after ${Date.now() - startedAt}ms` +
+            (skipToNextModel ? ", switching to fallback model" : "")
         );
       }
+      if (skipToNextModel) break;
       const isLastAttemptOverall =
         model === MODELS[MODELS.length - 1] && attempt === attemptsPerModel - 1;
       if (!isLastAttemptOverall) {

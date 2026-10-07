@@ -34,21 +34,42 @@ describe("extractLineItems — model fallback on repeated failure", () => {
     expect(generateContent.mock.calls[0][0].model).toBe("gemini-3.8-flash");
   });
 
-  it("falls back to the sibling model when the primary keeps throwing (e.g. 503s)", async () => {
+  it("skips straight to the fallback model when the primary is overloaded (503)", async () => {
     const { extractLineItems } = await import("./ai-extract");
     generateContent
-      .mockRejectedValueOnce(new Error("503 UNAVAILABLE"))
       .mockRejectedValueOnce(new Error("503 UNAVAILABLE"))
       .mockResolvedValueOnce({ text: validReceiptJson });
 
     const result = await extractLineItems("base64", "image/jpeg");
 
     expect(result.ok).toBe(true);
-    expect(generateContent).toHaveBeenCalledTimes(3);
-    // First two attempts on the primary model, third on the fallback.
+    expect(generateContent).toHaveBeenCalledTimes(2);
     expect(generateContent.mock.calls[0][0].model).toBe("gemini-3.8-flash");
+    expect(generateContent.mock.calls[1][0].model).toBe("gemini-3.5-flash-lite");
+  });
+
+  it("treats the SDK's ApiError status as overload too (504 deadline exceeded)", async () => {
+    const { extractLineItems } = await import("./ai-extract");
+    const deadline = Object.assign(new Error('{"error":{"code":504}}'), { name: "ApiError", status: 504 });
+    generateContent.mockRejectedValueOnce(deadline).mockResolvedValueOnce({ text: validReceiptJson });
+
+    const result = await extractLineItems("base64", "image/jpeg");
+
+    expect(result.ok).toBe(true);
+    expect(generateContent.mock.calls[1][0].model).toBe("gemini-3.5-flash-lite");
+  });
+
+  it("still retries the primary once for errors that aren't overload", async () => {
+    const { extractLineItems } = await import("./ai-extract");
+    generateContent
+      .mockRejectedValueOnce(new Error("socket hang up"))
+      .mockResolvedValueOnce({ text: validReceiptJson });
+
+    const result = await extractLineItems("base64", "image/jpeg");
+
+    expect(result.ok).toBe(true);
+    expect(generateContent).toHaveBeenCalledTimes(2);
     expect(generateContent.mock.calls[1][0].model).toBe("gemini-3.8-flash");
-    expect(generateContent.mock.calls[2][0].model).toBe("gemini-3.5-flash-lite");
   });
 
   it("caps every Gemini call with a timeout so a stalled request can't hang the route", async () => {
@@ -73,8 +94,9 @@ describe("extractLineItems — model fallback on repeated failure", () => {
     const result = await extractLineItems("base64", "image/jpeg");
 
     expect(result.ok).toBe(false);
-    // 2 attempts per model x 2 models = 4 total, never more.
-    expect(generateContent).toHaveBeenCalledTimes(4);
+    // Primary: 1 attempt (overload skips its retry). Fallback: both attempts,
+    // since there's nowhere left to go.
+    expect(generateContent).toHaveBeenCalledTimes(3);
   });
 
   it("falls back on unparseable responses too, not just thrown errors", async () => {
