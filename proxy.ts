@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { GUEST_COOKIE, GUEST_HEADER } from "@/lib/guest-session";
+import { contentSecurityPolicy } from "@/lib/csp";
 
 // /splits, /split/* and their API routes work for guests too (no Clerk
 // session required) — this sets/reads a guest_id cookie for them, and merges
@@ -64,7 +65,7 @@ export default clerkMiddleware(async (auth, req) => {
     path: "/",
   });
   return res;
-});
+}, { contentSecurityPolicy });
 
 export const config = {
   matcher: [

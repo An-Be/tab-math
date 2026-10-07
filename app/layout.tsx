@@ -33,7 +33,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {/* dynamic: lets Clerk tag its own <script> with the per-request CSP
+            nonce (see lib/csp.ts). Without it, a strict CSP blocks clerk-js. */}
         <ClerkProvider
+          dynamic
           appearance={{
             theme: shadcn,
             variables: { borderRadius: "0.125rem" },
