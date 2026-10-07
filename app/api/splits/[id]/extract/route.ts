@@ -14,7 +14,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   const result = await requireSplitOwner(id);
   if ("error" in result) {
-    console.warn(`[extract] rejected: split not owned by caller (${result.error.status})`);
+    console.warn(`[extract] rejected: no actor or split not owned by caller (${result.error?.status ?? "unknown"})`);
     return result.error;
   }
 
