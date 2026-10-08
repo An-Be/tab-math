@@ -9,432 +9,259 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 <!-- END:nextjs-agent-rules -->
 
 > **Everything below is project-owned and must stay OUTSIDE the markers above.**
-> `next dev` replaces the entire contents between `BEGIN:nextjs-agent-rules` and
-> `END:nextjs-agent-rules` with its own text whenever they do not match. Rules
-> written inside that block are destroyed on the next `next dev`. Text before
-> and after it is kept.
+> `next dev` replaces everything between `BEGIN:nextjs-agent-rules` and
+> `END:nextjs-agent-rules` whenever it doesn't match. Text before and after is kept.
 
-# Project Context & Code Quality Rules
+# Project rules
 
-## Never Commit or Push Without Asking First
+This repo follows **tool-template** (github.com/An-Be/tool-template), the shared
+base for Andrea's tiny tools. Tool-specific context goes in the "This tool"
+section at the bottom; everything above it is shared and should stay in sync
+with the template.
 
-**Do not run `git commit` or `git push` on your own initiative, even for a
-small, well-understood, already-verified fix.** Make the change, verify it
-(typecheck/lint/test/a real check against the database or a live endpoint
-where relevant), and then say what you'd commit and ask before doing it —
-every time, not just the first time in a session. A push here triggers a
-real production deployment on Vercel; that's a consequential, visible
-action, not a reversible local edit, and it's the user's call when it
-happens, not an inference from "this seems clearly in scope."
+## Never commit or push without asking
 
-## Tech Stack
+Do not run `git commit` or `git push` on your own initiative, even for a small,
+verified fix. Make the change, verify it, say what you'd commit, and ask. Every
+time. A push to `main` deploys to production on Vercel.
 
-TabMath — photograph a restaurant receipt, split it by item or evenly, share
-one link; whoever opens it picks their own name and sees only their total,
-no login. The organizer can use it without an account too (see Guest
-sessions, below).
+## Stack
 
-### Core
+- **Next.js 16** (App Router, Turbopack, RSC by default), **React 19**, **TypeScript 5** strict
+- **Tailwind CSS 4**, CSS-first: tokens live in `src/app/globals.css` under `@theme`. No `tailwind.config`.
+- **Hand-rolled UI primitives** in `src/components/ui/` (no shadcn, no Base UI). `cn()` from `src/lib/utils.ts`, variants with `cva`.
+- **Postgres on Neon** + **Prisma 7** with `@prisma/adapter-pg`
+- **Zod 4** for every external input
+- **Vitest** for pure logic
+- **Vercel**, region `cle1` (next to Neon `aws-us-east-2`)
 
-- **Next.js 16.3.8** — App Router, React Server Components by default, Turbopack
-- **React 19.2.8**, **TypeScript 5** (strict)
-- **Tailwind CSS 4** — CSS-first config; there is no `tailwind.config.ts`,
-  theme tokens live in `app/globals.css` under `@theme inline`
-- **shadcn/ui**, `base-nova` style, built on **Base UI** (`@base-ui/react`
-  1.8). Config in `components.json`. Primitives are generated into
-  `components/ui/` and may be overwritten by `npx shadcn add`.
-- `cn` (the `cn` package, re-exported from `lib/utils.ts`) for class merging
-- `lucide-react` icons, `sonner` toasts
+### Version rules that override older training data
 
-### Data
+- `middleware.ts` is **`src/proxy.ts`** in Next 16. Node runtime only.
+- `params`, `searchParams`, `cookies()` and `headers()` are **async**. `await` them.
+- Page props are typed with the generated global `PageProps<"/route/[param]">`
+  (run `next typegen`, which `npm run typecheck` does).
+- Prisma 7: generator is `prisma-client` (not `prisma-client-js`), output
+  `src/lib/generated/prisma` (gitignored). Import from
+  `@/lib/generated/prisma/client`, **never** `@prisma/client`. The datasource URL
+  is in `prisma.config.ts`, not `schema.prisma`. A driver adapter is mandatory
+  (`src/lib/server/db.ts`).
 
-- **Postgres (Neon)** + **Prisma 7.10** with `@prisma/adapter-pg` + `pg`
-- Generator is **`prisma-client`** (not `prisma-client-js`): it emits
-  **TypeScript** into `lib/generated/prisma`, which is **gitignored** — run
-  `npx prisma generate` after cloning, before `dev` or `build` will work.
-  `package.json`'s `build` and `postinstall` scripts both do this already;
-  don't remove that.
-- Datasource URL lives in **`prisma.config.ts`** (read via `dotenv/config`
-  from `.env`), not in `schema.prisma`'s `datasource` block — Prisma 7
-  removed `url` from schema files.
-- A **driver adapter is mandatory** in Prisma 7 — see `lib/prisma.ts`. Pool is
-  capped at `max: 5`: this runs in many concurrent Vercel function instances,
-  each with its own pool, and the `pg.Pool` default of 10 would multiply
-  across instances fast enough to blow through Neon's connection limit under
-  real concurrent traffic.
-- **If you ever spin up a local `npx prisma dev` server**: `migrate dev`
-  against it does not work, full stop — not a flag or shadow-database-URL
-  problem. That server auto-syncs every database it manages to the project's
-  current migration history the instant the database is created, including
-  the shadow database `migrate dev` creates for itself to diff against.
-  `migrate dev` needs an empty database to replay history into and never gets
-  one there, so it fails with something like `type "X" already exists` on
-  the *first* historical migration — confusing, because the error names an
-  old migration, not the new one you're adding. To add a migration against a
-  server like that:
-  ```bash
-  npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --script \
-    > prisma/migrations/$(date -u +%Y%m%d%H%M%S)_<name>/migration.sql
-  npx prisma migrate deploy   # applies it directly — no shadow DB involved
-  ```
-  This project now runs directly against real Neon for both dev and prod, so
-  this shouldn't come up — but it's exactly the bug that cost real debugging
-  time once already (see Validating Decisions).
-- A hand-authored migration folder's directory name **is** its sort order.
-  Prisma applies migrations by filename timestamp, not creation order or git
-  history — a folder timestamped earlier than one it logically follows will
-  be applied first against a fresh database, even if your local database
-  (which just has both marked "already applied") never caught it. This
-  already happened once in this repo's history; see Validating Decisions.
+## Layout
 
-### Services
+```
+src/app/                 routes; Server Components fetch, client components render
+src/app/api/             route handlers
+src/components/ui/       hand-rolled primitives (Button, Input, Field, Dialog, Switch, Toast, CopyField, SectionLabel, Shell)
+src/components/site/     header, footer, mark
+src/components/<feature>/ feature components
+src/config/              site.ts (name, copy), csp.ts (CSP allowlist), routes.ts (secret path prefixes)
+src/lib/                 pure logic, no JSX; safe on client and server
+src/lib/server/          server-only modules (each imports "server-only")
+src/proxy.ts             per-request nonce CSP
+prisma/                  schema, migrations, sql/app-role.sql
+scripts/db-check.mjs     build-time schema drift check
+```
 
-- **Clerk 7.9** (`@clerk/nextjs`) — organizer accounts; payers never see Clerk.
-  Themed via `@clerk/ui`'s `shadcn` theme (`appearance={{ theme: shadcn,
-  variables: { borderRadius: "0.125rem" } }}` on `ClerkProvider`, plus
-  `@import "@clerk/ui/themes/shadcn.css"` in `globals.css`) — not optional
-  polish: Clerk's *unthemed* modal had a real bug where its footer strip
-  ("Sign up" / "Secured by Clerk") wasn't fully covered by the modal's own
-  backdrop, letting page content behind it bleed through visually. The theme
-  fixed that as a side effect of giving the modal one solid, opaque surface.
-  Google OAuth is enabled on both Clerk instances (intentional, not a
-  leftover default) alongside email-code.
-- **Guest sessions** (`lib/get-current-actor.ts`, `proxy.ts`) — an organizer
-  can use the whole app with zero sign-up. `proxy.ts` issues a `guest_id`
-  cookie (httpOnly, `sameSite: lax`, `secure` in production,
-  `crypto.randomUUID()`) and a mirrored `User` row (`isGuest: true`). The
-  moment a guest later signs in for real, `proxy.ts` detects both identities
-  on the same request and merges the guest's splits onto the real account in
-  one transaction, then drops the cookie. `getCurrentActor()` is the single
-  place that resolves "who is making this request" — Clerk first, guest
-  cookie second — and every route/page should call it rather than reading
-  `auth()` or the cookie directly.
-- **Uploadthing 7.7** — receipt photos
-- **Google Gemini** (`@google/genai`) — receipt line-item + tax/tip
-  extraction, `lib/ai-extract.ts`. Structured output via `responseJsonSchema`,
-  not free-text parsing. Model name has moved once already
-  (`gemini-2.5-flash` → `gemini-3.8-flash` after Google deprecated the
-  former) — if extraction starts 404ing, that's almost certainly a model
-  rename again; check the error message, it names the replacement, or query
-  `GET /v1beta/models?key=...` directly for what's currently live rather
-  than guessing. `MODELS` in `ai-extract.ts` is an ordered list, not a single
-  model — after exhausting retries on the primary (`gemini-3.8-flash`), it
-  falls back to a sibling (`gemini-3.5-flash-lite`), since a 503 on one model
-  doesn't necessarily mean the other is also under demand pressure. Verify
-  any new fallback candidate actually supports image input +
-  `responseJsonSchema` before adding it — not all models do, and `generateContent`
-  support alone (what the models-list endpoint reports) doesn't guarantee
-  either.
-- **Zod 4** — all external input validation. Object schemas strip unknown
-  keys by default, which is why mass-assignment isn't a concern on the PATCH
-  routes — don't switch any of them to `.passthrough()`.
+## Security (non-negotiable)
 
-### Version-specific rules that override older training data
+- **No secrets on the client.** Never prefix a secret with `NEXT_PUBLIC_`. Every
+  module that touches the database or a secret lives in `src/lib/server/` and
+  imports `server-only`, so importing it from a client component fails the build.
+- **Secret links are credentials.** Generate them with `newToken()` (128-bit,
+  base62). Never use `cuid()`/`uuid()` for anything that grants access.
+  Format-check with `isWellFormedToken()` before querying.
+- **Every mutating route starts with `rejectCrossSite(req)`** (CSRF: Sec-Fetch-Site,
+  Origin, JSON content type), then `checkRateLimit()` if the route costs anything
+  (writes, AI calls, uploads), then `parseJsonBody(req, schema)`. Start new routes by copying an existing
+  mutating route (in the template: `src/app/api/spaces/route.ts`).
+- **Zod object schemas strip unknown keys**; that is what blocks mass assignment.
+  Never use `.passthrough()` / `.loose()`.
+- **Return 404, not 403**, for a resource that doesn't exist or isn't the caller's,
+  so ids and tokens can't be probed.
+- **Select only the fields a view needs** and pass only those across the
+  server/client boundary. Never hand a whole row to a client component.
+- **Secret-link pages**: add the prefix to `privateHeaders` in `next.config.ts`
+  (`no-store`, `noindex`) and to `secretPathPrefixes` in `src/config/routes.ts`
+  (log redaction). Page titles never include user content.
+- **CSP** is built per request in `src/proxy.ts` with a nonce and must stay the only
+  CSP header. Add third-party origins in `src/config/csp.ts`, one comment per entry.
+  Violations are logged by `/api/csp-report` (filter Vercel logs on `[csp]`).
+- **No inline `style` attributes.** Production CSP is nonce-only for styles.
 
-- `middleware.ts` is **`proxy.ts`** in Next 16. Node-only runtime, not
-  configurable (good — ours talks to Postgres directly, which an Edge
-  runtime couldn't do). Export a function named `proxy` or default-export it.
-- `params`, `searchParams`, `cookies()`, and `headers()` are all **async** —
-  `await` them.
-- Clerk **deprecates `createRouteMatcher`**. `proxy.ts` uses a plain
-  `pathname.startsWith(...)` check instead — that's routing logic (which
-  requests need an actor resolved), not an authorization decision, so the
-  deprecated helper was never actually needed for it.
-- Import Prisma types/client from `@/lib/generated/prisma/client`, **never**
-  from `@prisma/client`.
-- **Production Clerk uses a dedicated subdomain, not our domain.** A
-  `pk_live_...` key has the Frontend API domain base64-encoded into it
-  (`clerk.tabmath.com` here) — clerk-js loads from *that* subdomain, not
-  from `tabmath.com`. It needs 5 CNAME records at the registrar (`accounts`,
-  `clerk`, `clk._domainkey`, `clk2._domainkey`, `clkmail` → Clerk's
-  `*.clerk.services` targets, from Clerk's dashboard once a custom domain is
-  added to the production instance) — this is DNS, not an app-code problem.
-  We initially misdiagnosed a `/__clerk/npm/...` 404 on `tabmath.com` itself
-  as a middleware-matcher bug (see the `/__clerk/(.*)` entry in `proxy.ts`'s
-  matcher) and shipped that fix; it didn't resolve the actual issue, because
-  the actual issue was those DNS records not existing yet. That matcher
-  entry stayed (it's a harmless no-op, and a prerequisite if Clerk's
-  same-origin `frontendApiProxy` fallback is ever enabled on purpose), but
-  don't mistake it for the fix if this error class resurfaces — check the
-  DNS/custom-domain setup in Clerk's dashboard first.
-- **shadcn `base-nova` has no `asChild`.** Base UI uses a `render` prop
-  instead: `<Button render={<Link href="/x" />}>Label</Button>`, label as
-  children rather than inside the rendered element.
-- When a `render` prop supplies a **non-`<button>`** element (a `next/link`
-  anchor, an external `<a>`), you must also pass **`nativeButton={false}`**.
-  Base UI defaults it to `true` and otherwise throws a hydration error and
-  drops the `role="button"`/`tabindex` it would add. Hit this for real in
-  `app/page.tsx`'s landing CTA — see Validating Decisions.
-- Native `<button>` elements default to `cursor: default` in Chrome, not
-  `pointer` — Tailwind's preflight doesn't patch this. Fixed globally in
-  `app/globals.css`'s `@layer base` rather than per-component.
+## Database
 
-## Essential Commands
+- The app connects as a **least-privilege role** (`prisma/sql/app-role.sql`):
+  row access on app tables only, no DDL.
+- **Migrations are applied by the Neon owner role**, not the app role. After a
+  migration adds a table, extend the app role's grants.
+- `npm run build` runs `scripts/db-check.mjs`, which fails the build if the live
+  database doesn't match `schema.prisma` (required on Vercel, skipped locally
+  without `DIRECT_URL`).
+- A migration folder's name is its sort order. Generate new ones with
+  `npx prisma migrate dev --name <name>` or, by hand,
+  `npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --script`
+  into a folder timestamped **after** the latest one.
+- Concurrency: when two writers can race (two phones tapping at once), lock the
+  parent row (`SELECT ... FOR UPDATE` in a transaction) or lean on a unique index.
 
-- Dev server: `npm run dev` (port 3200)
-- Build & verification: `npm run build` (runs `prisma generate` first)
-- Code quality: `npm run lint` && `npx tsc --noEmit`
-- Migrations: `npx prisma migrate dev --name <name>` (against real Neon —
-  shadow DB works normally there); `npx prisma studio` to browse data
-- Local Postgres, if you want one: `npx prisma dev --detach --name <name>` —
-  read the migration caveat above first
+## Code rules
 
-## Architecture & Code Cleanliness
+- Server Components by default. `"use client"` only for state, handlers or browser APIs.
+  Initial data is fetched on the server and passed down, never fetched client-side on load.
+- **No default exports** except files Next or a tool requires (`page`, `layout`,
+  `not-found`, `manifest`, `route` handlers are named exports, configs).
+- **One component per file.** Early returns over nesting. **No `any`.**
+- Client calls to our own API go through `api()` in `src/lib/api-client.ts`.
+- Pure logic belongs in `src/lib/*.ts` with a `*.test.ts` next to it.
+- `next/link` for internal links; plain `<a>` only for links that leave the app.
+- Colors come from tokens (`ink`, `paper`, `mute`, `faint`, `wash`). Type is
+  `display` (Space Grotesk) or mono; small caps text uses the `label` utility.
+  Sections are numbered with `SectionLabel`.
+- Inputs use 16px text on mobile so iOS doesn't zoom.
 
-### 1. Component Boundaries
+## Validating changes
 
-- **Server Components by default.** Only add `"use client"` when a component
-  needs state, event handlers, or a browser API. Every file under
-  `app/split/[id]/page.tsx`, `app/splits/page.tsx`, and `app/p/[shareToken]/page.tsx`
-  is a Server Component that fetches with Prisma directly and passes already-shaped
-  data down to a client component — never a client-side fetch for initial load.
-- **Folder structure:** routes in `app/`; shadcn primitives in
-  `components/ui/` (regenerable, don't hand-edit beyond what shadcn itself
-  wrote); feature components in `components/splits/` and `components/payer/`;
-  pure logic with no JSX in `lib/`.
-- `lib/totals.ts` is the single source of truth for bill math — itemized
-  proration and even-split division. It's pure (no Prisma, no HTTP) on
-  purpose: the API route and any future surface (payer view, a future
-  export feature) call the same function rather than recomputing. **The
-  payer view never computes its own totals — it only reads** what this
-  function produced server-side. Don't let that invariant drift.
+A green `build`, `typecheck` and `lint` are not validation. When you add a
+conditional, fallback, retry or anything that depends on external state:
 
-### 2. Strict Cleanliness Rules
+1. Find every consumer with `grep`, not memory.
+2. Exercise every branch at runtime (a `curl` sequence against `npm run dev`, or
+   a script against a real database).
+3. Check the blast radius: which other surfaces could this break?
+4. Say what you couldn't exercise.
 
-- **No default exports**, except required Next.js files (`page.tsx`,
-  `layout.tsx`, `manifest.ts`) and config files their own tooling requires
-  (`next.config.ts`, `prisma.config.ts`).
-- **No inline styles.** Tailwind utility classes only.
-- **Early returns** over nested conditionals — see `getCurrentActor`,
-  `requireSplitOwner`, every route handler's guard-clause-first shape.
-- **One component per file.**
-- **State stays local.** `SplitWorkspace` owns all of a single split's
-  editing state and passes handlers down; nothing is lifted into a global
-  store, and there isn't one.
+## Commands
 
-### 3. TypeScript & Type Safety
+```bash
+npm run dev         # dev server
+npm run build       # prisma generate + drift check + next build
+npm run typecheck   # next typegen + tsc
+npm run lint
+npm test            # vitest
+npx prisma studio
+```
 
-- **No `any`.** Use `unknown` and narrow, or a precise generic.
-- **Zod validates every external input** — every route handler parses
-  `request.json()` through a schema before touching Prisma.
-- Use `next/image` and `next/link` for anything internal. External payment
-  links (Venmo/Cash App/Stripe) and the organizer's pasted Stripe link are
-  plain `<a>` — see Documented Exceptions.
+## This tool
 
-### 4. Authorization
+**TabMath**: photograph a restaurant receipt, split it by item or evenly, share
+one link. Whoever opens it picks their own name and sees only their total, no
+login. The organizer can use it without an account too (guest sessions). No
+money moves through the app; "Pay" hands off to the organizer's Venmo, Cash
+App, Zelle or Stripe link.
 
-- Protection is **per-resource, never path-based**. Every route under
-  `/api/splits/[id]/*` calls `requireSplitOwner(id)` first — resolves the
-  actor via `getCurrentActor()`, then checks `split.userId === actor.id`.
-  Routes referencing a *sub*-resource (an item, a person, an assignment)
-  additionally verify that sub-resource belongs to the split in the URL, not
-  just that the split belongs to the caller — see `assignments/route.ts` and
-  `items/[itemId]/route.ts` for the pattern. Copy one of these files as the
-  template for any new mutating route; don't write the check from scratch.
-- Return **404, not 403**, when a resource doesn't belong to the caller, so
-  an id can't be used to probe for existence.
-- **`/`, `/p/[shareToken]`, and `/api/uploadthing` must keep working with no
-  Clerk session at all** — they're the public/guest/payer surfaces. Never
-  move an auth requirement into `proxy.ts`'s matcher for these; it runs on
-  every request and would take the payer link down for everyone who has it.
-- The payer view (`app/p/[shareToken]/page.tsx`) is intentionally
-  minimal: it renders the split title, the list of first names (for the
-  "who are you" picker), and — only once a person is selected — that one
-  person's total and sanitized payment options. It never receives the
-  organizer's email, user id, other people's amounts, or the raw item list
-  as props to a client component. If you touch this file, re-verify that
-  invariant by reading what gets passed across the server/client boundary,
-  not just that it renders correctly.
+Dev server runs on port 3200 (`npm run dev`).
 
-### 5. Hardening (`lib/rate-limit.ts`, `lib/client-ip.ts`)
+### Optional modules in use
 
-- **Rate limiting is Postgres-backed** (`RateLimitHit`; no Redis/Upstash is
-  provisioned — deliberate, see Documented Exceptions). `checkRateLimit(key,
-  { limit, windowSeconds })` does a single atomic upsert-and-increment, fixed
-  window; verified race-free under real concurrent load (10 simultaneous
-  calls against a limit of 5 → exactly 5 allowed). Keyed by IP
-  (`getClientIp()`, reads `x-forwarded-for`), not by actor id — a guest can
-  get a fresh actor id for free by clearing cookies, so actor-id keying alone
-  wouldn't stop anything. Applied to the three routes with a real cost: photo
-  extraction (Gemini calls, 10/10min), split creation (DB bloat, 20/hour),
-  and uploads (storage, 15/10min) — all keyed by IP.
-- **No CSRF-specific guard exists.** The guest cookie's `sameSite: "lax"` is
-  the only CSRF mitigation in place (it blocks cookies from being sent on a
-  cross-site POST), plus whatever Clerk's own session handling does
-  internally for its cookie. There's no explicit same-origin/`Origin`-header
-  check on mutating routes. Fine for the current stakes (no money moves
-  through this app), but if that ever changes, add one before anything else.
-- **No audit log exists.** Not needed yet — there's no multi-operator access
-  to a single split, and nothing here is compliance-sensitive. Worth adding
-  if that stops being true.
+- **Clerk 7.9** (`@clerk/nextjs`): organizer accounts; payers never see Clerk.
+  `src/proxy.ts` is `clerkMiddleware`, and the CSP is built by Clerk from
+  `src/lib/clerk-csp.ts` (shared defaults + `src/config/csp.ts`), currently
+  **report-only**. Flip `reportOnly` once `[csp]` reports go quiet across
+  sign-in, receipt upload and the payer view.
+  - Themed with `@clerk/ui`'s `shadcn` theme, fed by the variable bridge in
+    `src/app/clerk-theme.css`. Not optional polish: Clerk's unthemed modal
+    let page content bleed through its footer strip.
+  - Google OAuth is enabled on both Clerk instances alongside email-code.
+  - Production Clerk loads from `clerk.tabmath.com` (needs 5 CNAMEs at the
+    registrar). A `/__clerk/npm/...` 404 means DNS, not the proxy matcher.
+    The `/__clerk/(.*)` matcher entry is a harmless leftover.
+  - Clerk deprecates `createRouteMatcher`; the proxy uses a plain prefix check
+    because it's routing (which requests need an actor), not authorization.
+- **Guest sessions** (`src/lib/server/get-current-actor.ts`, `src/proxy.ts`):
+  the proxy issues a `guest_id` cookie (httpOnly, `sameSite: lax`, `secure` in
+  production) and a mirrored `User` row (`isGuest: true`). When a guest signs
+  in, the proxy merges their splits onto the real account in one transaction
+  and drops the cookie. `getCurrentActor()` is the only place that resolves
+  who is asking; never read `auth()` or the cookie directly.
+- **Uploadthing 7.7**: receipt photos (`src/app/api/uploadthing/core.ts`).
+- **Google Gemini** (`src/lib/server/ai-extract.ts`): line items + tax/tip via
+  `responseJsonSchema`. `MODELS` is an ordered list (primary, then a sibling
+  fallback after retries). Model names have changed before; a 404 names the
+  replacement. Verify a new model supports image input + `responseJsonSchema`.
 
-## Validating Decisions
+### Domain rules
 
-**When you introduce a conditional, a fallback, a retry, or anything
-dependent on external state, validate every branch. Do not guess, and do not
-reason that an untested case is probably fine.**
+- `src/lib/totals.ts` is the single source of truth for bill math. Pure. The
+  payer view never computes totals itself; it reads what this produced.
+- **Per-resource authorization, never path-based.** Every `/api/splits/[id]/*`
+  route calls `requireSplitOwner(id)` first; routes on a sub-resource (item,
+  person, assignment) also check it belongs to the split in the URL. Copy
+  `assignments/route.ts` or `items/[itemId]/route.ts` for new routes.
+- `/`, `/p/[shareToken]` and `/api/uploadthing` must work with no Clerk
+  session. Never add an auth requirement for them to the proxy.
+- **The payer view** (`src/app/p/[shareToken]/page.tsx`) only ever renders the
+  title, first names, and once someone is picked, that person's total and
+  sanitized payment options. Re-check what crosses the server/client boundary
+  whenever you touch it.
+- **Share tokens** are generated with `newToken()` in `POST /api/splits`.
+  Splits created before the template alignment keep their original cuid
+  tokens so links already sent keep working.
+- **The extract route fetches the photo server-side**, so `imageUrl` must pass
+  `isUploadthingFileUrl()` (`src/lib/receipt-url.ts`) and redirects are refused.
+  Never loosen that; it's the SSRF guard.
+- Request schemas live in `src/lib/split-schemas.ts`. Receipt error messages
+  shown to people live in `src/lib/receipt-errors.ts`.
 
-A green `build`, `tsc --noEmit`, and `lint` are **not** validation — they
-don't catch a state update an uncontrolled input silently fails to reflect,
-a migration that only looks applied because the database it ran against
-skipped replaying history, or a retry loop that only handles one of the two
-ways a call can fail.
+### Rate limits (Postgres, keyed by IP)
 
-Required steps for any such change:
+Receipt extraction 10/10 min (only real Gemini calls count), split creation
+20/hour, uploads 15/10 min, feature-interest votes 5/hour.
 
-1. **Enumerate every consumer** of the thing you made conditional —
-   `grep` for it, don't work from memory of what you wrote.
-2. **Exercise every branch at runtime**, not just the happy one. For this
-   project that has usually meant: a real script against the real database
-   (not an assumption about Prisma's behavior), or a live `curl` sequence
-   against the running dev server.
-3. **Check the blast radius** — which unrelated surfaces can the branch you
-   just touched take down with it, and did you confirm they still work.
-4. **State what you couldn't exercise.** If something's unreachable without
-   a credential you don't have, say so rather than implying it passed.
+### Database notes
 
-Precedents in this repo, each of which shipped looking correct and was only
-caught by actually exercising it:
+- `DATABASE_URL` and `DIRECT_URL` are both the **direct** Neon string: local
+  `prisma dev` multiplexing corrupted unnamed prepared statements under
+  concurrency once; real Neon direct is verified.
+- Neon branches: `production` (`br-bold-sunset-b5sclpxc`) is the deploy
+  target, `dev` (`br-shiny-sun-b5b03m3t`) is local. A `--schema-only` branch
+  also wipes `_prisma_migrations`; fix with `prisma migrate resolve --applied`
+  per migration, not `migrate deploy`.
+- Never run `migrate dev` against a local `prisma dev` server (it pre-syncs
+  the shadow database). Use `migrate diff ... --script` + `migrate deploy`.
 
-- **Uncontrolled tax/tip inputs didn't resync on an external update.** The
-  tax and tip fields save on blur (uncontrolled, `defaultValue` + `onBlur`).
-  When Gemini extraction fills in a tax value *after* the field had already
-  mounted at `$0.00`, the field kept showing `$0.00` — the real value was
-  saved correctly underneath, but the input never re-rendered to reflect it,
-  because `defaultValue` only applies once at mount. Compiled fine, looked
-  fine on first load; only visible by actually uploading a receipt with a
-  tax line after the form had already rendered. Fixed with a `key={taxCents}`
-  remount trick, not by switching to a controlled input (that would mean
-  the field fighting the user's keystrokes against every byte of
-  server round-trip).
-- **A migration folder's own name silently broke a fresh database.** A
-  hand-authored migration (to work around the `prisma dev` shadow-db issue
-  above) got a timestamp earlier than the migration before it. The local
-  dev database never caught it, because both had just been marked "already
-  applied" without ever being replayed in order. It only surfaced the first
-  time `migrate deploy` ran against a genuinely empty database (real Neon)
-  and tried to apply them in filename order.
-- **`Button render={<Link />}` without `nativeButton={false}`** threw a
-  hydration error in the browser console on the landing page's primary CTA.
-  Types compiled — `render` accepts any element — so it looked done.
-- **A connection-pooling bug only appeared under concurrent load.** Local
-  `prisma dev` multiplexes connections in a way that corrupts Postgres's
-  unnamed prepared-statement protocol under concurrent queries
-  (`bind message supplies N parameters, but prepared statement "" requires
-  0`) — a known class of bug with transaction-mode connection poolers, not
-  something `tsc`/`lint`/a single manual request would ever catch. Moved to
-  real Neon directly; re-ran the exact failing concurrent-query pattern 15x
-  to confirm before considering it closed.
+### Precedents worth remembering
 
-## Documented Exceptions
+Each shipped looking correct and was only caught by exercising it:
 
-These are deliberate. Don't "fix" them without discussion.
+- Uncontrolled tax/tip inputs (`defaultValue` + `onBlur`) didn't show a value
+  extraction filled in later. Fixed with `key={taxCents}` remounts, not a
+  controlled input.
+- A hand-made migration folder timestamped before its predecessor broke a
+  fresh database (folder name is sort order).
+- A pooling bug only appeared under concurrent load; re-ran the failing
+  pattern 15x against real Neon before closing it.
 
-- **Plain `<a>` instead of `next/link`** for: external payment provider
-  links (Venmo/Cash App/the organizer's Stripe link) — these leave the app
-  entirely, `next/link` is for internal navigation only.
-- **Inline `<svg>` instead of `next/image`** for the brand mark in the
-  header (`app/layout.tsx`). It uses `fill="currentColor"` so it inherits
-  text color in both the header and anywhere else it's reused — `next/image`
-  can't do that, and this isn't a photo Next needs to optimize/resize.
-- **No Redis/Upstash for rate limiting.** Deliberately Postgres-backed
-  instead, reusing infrastructure already provisioned rather than adding a
-  service purely for this. Revisit only if volume grows enough that the
-  extra writes to `RateLimitHit` become a measurable load on the primary DB
-  — not a concern at this app's current scale.
-- **IP-based rate limiting, not a CAPTCHA or stronger identity check.**
-  Appropriate for "stop a buggy retry loop or casual abuse" at this app's
-  current scale (shared with people you know), not "defend against a
-  determined attacker with rotating proxies." Don't read the existence of
-  rate limiting as a claim that it's bulletproof.
+### Validating a feature before building it
 
-## What NOT to Touch
+`FeatureInterest` + `/api/feature-interest` + `src/components/landing/feature-interest.tsx`
+is the pattern for gauging demand before building: a teaser with an "I want
+this" button, allowlisted keys only (`FEATURES` in the route). Current entry:
+`self-claim-items` (payers tap their own items). Deliberately not built yet;
+the open questions are identity, double-claims, unclaimed items and trust.
 
-- `lib/generated/prisma/**` is generated by `prisma generate`. Never
-  hand-edit it — it's gitignored and gets wiped on every `npm install`.
-- `components/ui/**` primitives created by `npx shadcn add` may be
-  regenerated; don't build project-specific logic into them.
-- `tab-math-icon/` is the source icon kit (SVG masters, the full PNG size
-  range, and its own README with a spec/don't-touch list for the mark
-  itself). It's a reference bundle, not wired into the build — the actual
-  installed icons are `app/favicon.ico`, `app/apple-icon.png`,
-  `app/manifest.ts`, and `public/icon-*.png`.
+### Documented exceptions
 
-## Active Focus
+- Plain `<a>` for payment provider links (they leave the app).
+- `lucide-react` icons are used alongside the hand-rolled primitives.
+- `Referrer-Policy: strict-origin-when-cross-origin` and
+  `Cross-Origin-Opener-Policy: same-origin-allow-popups` (see `next.config.ts`):
+  kept from the proven Clerk + Google OAuth setup. Neither leaks a path.
+- Postgres rate limiting instead of Redis; IP-based, not a CAPTCHA. Fine for
+  "stop a buggy retry loop or casual abuse", not a determined attacker.
+- No audit log (single-operator splits, nothing compliance-sensitive).
 
-M1–M3 of the original spec are complete (split CRUD + receipt extraction;
-assignment + totals + tax/tip + even-split; share links + payer view +
-payments + dashboard), plus a security/hardening pass (per-resource auth
-audit, Postgres-backed rate limiting, connection pool sizing) and an
-aesthetic system (monochrome, geometric, typographic — see `app/globals.css`
-and the numbered-section convention in `SplitWorkspace`).
+### What not to touch
 
-**Testing:** Vitest (`npm test` / `npm run test:watch`). Covers two pure
-`lib/` modules with no DB dependency — `lib/totals.ts` (every
-proration/remainder-penny edge case, both split modes, the spec's own
-acceptance-criteria example) and `lib/payment-links.ts` (handle parsing for
-every provider) — plus `lib/ai-extract.ts`'s model-fallback control flow,
-which mocks `@google/genai`'s `GoogleGenAI` class rather than hitting the
-real API (note: that mock must be a real `function`, not an arrow function —
-`ai-extract.ts` calls `new GoogleGenAI(...)`, and arrow functions can't be
-constructors, which fails with a cryptic "is not a constructor" rather than
-a useful message). Anything pure belongs in a `*.test.ts` next to the module
-it tests. `lib/rate-limit.ts` is deliberately not unit-tested — it's a thin
-wrapper around one Postgres upsert, and the thing worth verifying (no race
-under real concurrency) was already exercised with a one-off script against
-live Neon rather than a mock; a real integration test for it would need a
-test database wired into CI, which doesn't exist yet. Route handlers and
-Server Components aren't tested at all yet — if that's ever worth doing,
-reach for Next's own testing guide rather than guessing at a setup.
+- `tab-math-icon/` is the source icon kit (masters + its own spec). Installed
+  icons are `src/app/favicon.ico`, `src/app/apple-icon.png`,
+  `src/app/manifest.ts` and `public/icon-*.png`.
 
-## Validating a Feature Before Building It
+### Testing
 
-`FeatureInterest` + `/api/feature-interest` + `components/landing/feature-interest.tsx`
-is the pattern for a proposed feature that shouldn't be built until there's
-evidence anyone wants it: a small teaser on the landing page with an "I'd use
-this" button, gated by the same allowlist-enum approach as everything else
-public-facing (`FEATURES` in the route — add a new key there before a
-component can record interest in it, never accept an arbitrary string).
-Check demand with `npx prisma studio` or a quick count query, not a built
-dashboard — this isn't worth more infrastructure than the signal it's
-measuring. The current entry (`self-claim-items`) is the v2 idea of letting
-payers tap their own items instead of the organizer assigning everything;
-deliberately not built — see the conversation that proposed it for the real
-tradeoffs (identity, double-claims, unclaimed items, trust) before picking
-this back up.
-
-## Before Deploying
-
-Checked as of the last pre-deployment review — re-verify rather than trust
-this blindly if time has passed:
-
-- **Nothing has been pushed anywhere.** `git log` has exactly one commit,
-  the original `create-next-app` scaffold — everything built since is
-  uncommitted, and no remote is configured. Commit and push before anything
-  else; a Vercel deploy needs a repo to deploy from.
-- **No Vercel project exists yet** for this app (checked the account
-  directly). The sequence is: push the repo → create the Vercel project from
-  it → set the four env vars in Vercel's dashboard (never commit them) → add
-  any custom domain inside that project's Settings → Domains, which will
-  tell you definitively what DNS record it wants rather than guessing ahead
-  of time.
-- **Clerk is a development instance** (`pk_test_...`, on a
-  `.clerk.accounts.dev` domain) — it'll run in production fine, but Clerk's
-  own SDK logs a warning that dev instances have stricter usage limits and
-  aren't meant for real production traffic. Promoting to a production
-  instance means adding a custom domain in Clerk's dashboard. Fine to defer
-  for a soft launch; shouldn't be deferred indefinitely.
-- **Done:** local dev and "production" now use separate Neon branches.
-  `production` (`br-bold-sunset-b5sclpxc`) is the deploy target — set
-  Vercel's `DATABASE_URL` to that branch's direct connection string, not
-  local `.env`'s. Local `.env` points at `dev` (`br-shiny-sun-b5b03m3t`),
-  created with `--schema-only` off `production`. One gotcha worth knowing if
-  you ever do this again: `--schema-only` copies table *structure*
-  (including enum types) but wipes all row data, **including the
-  `_prisma_migrations` bookkeeping table itself** — so `migrate deploy`
-  against a schema-only branch tries to re-run `init` from scratch and fails
-  on `type "X" already exists`, even though the schema is already correct.
-  Fix is `prisma migrate resolve --applied <name>` for each migration in
-  order, not `migrate deploy`.
-- Run a real production build locally (`npm run build && npm start`) before
-  the first deploy — catches anything that only breaks outside `next dev`.
+Vitest covers `totals`, `payment-links`, `receipt-errors`, `receipt-url`, the
+Gemini fallback flow (mocking `GoogleGenAI` with a real `function`, since the
+code calls `new`), and the shared template helpers. The rate limiter's race
+safety was verified against live Neon (10 concurrent calls, limit 5, exactly
+5 allowed), not unit tested. Route handlers aren't unit tested; exercise them
+with `curl` against `npm run dev`.

@@ -11,57 +11,51 @@ Stripe payment link.
 
 ## Stack
 
-Next.js 16 (App Router) · TypeScript · Tailwind CSS 4 · shadcn/ui (`base-nova`,
-Base UI) · Prisma 7 + Postgres (Neon) · Clerk (organizer auth) · Uploadthing
-(receipt photos) · Google Gemini (receipt line-item + tax/tip extraction) ·
-Vitest
+Built on [tool-template](https://github.com/An-Be/tool-template): Next.js 16 (App Router) · TypeScript · Tailwind CSS 4 · hand-rolled monochrome UI · Prisma 7 + Postgres (Neon) · Vitest. Plus Clerk (organizer auth), Uploadthing (receipt photos) and Google Gemini (line-item + tax/tip extraction).
 
-See [`AGENTS.md`](./AGENTS.md) for the full architecture, conventions, and
-known gotchas — read that before making non-trivial changes.
+See [`AGENTS.md`](./AGENTS.md) for the shared rules and TabMath's own architecture notes. Read it before making non-trivial changes.
 
 ## Setup
 
 ```bash
 npm install          # also runs `prisma generate` via postinstall
 cp .env.example .env # then fill in the values below
-npx prisma migrate deploy
+npx prisma migrate deploy # with the Neon owner role
 npm run dev          # http://localhost:3200
 ```
 
 ### Environment variables
 
-All required, none optional for local dev (see `.env.example`):
+| Variable | Where to get it |
+| --- | --- |
+| `DATABASE_URL`, `DIRECT_URL` | [Neon](https://console.neon.tech), **direct** (non-pooled) string for the `tabmath_app` role (`prisma/sql/app-role.sql`) |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` | [Clerk dashboard](https://dashboard.clerk.com) |
+| `UPLOADTHING_TOKEN` | [Uploadthing dashboard](https://uploadthing.com/dashboard) |
+| `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/apikey) |
 
-| Variable                                                | Where to get it                                                                       |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `DATABASE_URL`                                          | [Neon](https://console.neon.tech) — use the **direct** (non-pooled) connection string |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` | [Clerk dashboard](https://dashboard.clerk.com)                                        |
-| `UPLOADTHING_TOKEN`                                     | [Uploadthing dashboard](https://uploadthing.com/dashboard)                            |
-| `GEMINI_API_KEY`                                        | [Google AI Studio](https://aistudio.google.com/apikey)                                |
-
-Never commit `.env` — it's gitignored. `.env.example` has no real values and
-is the only env file meant to be tracked.
+`DIRECT_URL` is required on Vercel: the build fails if the live database doesn't match `schema.prisma`. Never commit `.env`.
 
 ## Commands
 
 ```bash
 npm run dev          # dev server, port 3200
-npm run build        # prisma generate + next build
-npm start             # production server, port 3200
-npm run lint          # eslint
-npx tsc --noEmit       # typecheck
-npm test               # vitest, single run
-npm run test:watch     # vitest, watch mode
-npx prisma studio      # browse the database
-npx prisma migrate dev # create + apply a migration (against real Neon)
+npm run build        # prisma generate + drift check + next build
+npm start            # production server, port 3200
+npm run lint         # eslint
+npm run typecheck    # next typegen + tsc
+npm test             # vitest
+npx prisma studio    # browse the database
 ```
+
+## Security
+
+- Organizer routes check ownership per resource (`requireSplitOwner`) and answer 404 for anything not yours.
+- Every mutating route checks `Sec-Fetch-Site`/`Origin` and requires JSON (CSRF), caps the body size and validates it with Zod.
+- Payer links use 128-bit tokens; payer, organizer and API responses are `no-store` and `noindex`; tokens and ids are redacted from CSP logs.
+- Receipt extraction only fetches photos from Uploadthing's own hosts (no SSRF).
+- Postgres-backed rate limits on extraction, split creation, uploads and feature votes.
+- Nonce-based CSP built by Clerk (report-only for now), HSTS, `X-Frame-Options`, `nosniff`, restrictive `Permissions-Policy`.
 
 ## Status
 
-M1–M3 of the build are complete: split creation, receipt extraction,
-item assignment, tax/tip, even-split, share links, the no-login payer view,
-payment handles, and mark-paid. A security/hardening pass and a Postgres-backed
-rate limiter are in place. Test coverage currently covers the bill-splitting
-math itself (`lib/totals.test.ts`) and payment-link parsing
-(`lib/payment-links.test.ts`) — see `AGENTS.md`'s Active Focus section for
-what's deliberately not covered yet.
+M1 to M3 are complete: split creation, receipt extraction, item assignment, tax/tip, even split, share links, the no-login payer view, payment handles and mark-paid, plus the security pass and the tool-template alignment.

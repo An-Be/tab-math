@@ -1,9 +1,9 @@
-// Prisma schema for Bill Splitter MVP
-// https://pris.ly/d/prisma-schema
+// TabMath schema. Prisma 7: the datasource URL lives in prisma.config.ts.
+// The client is generated as TypeScript into src/lib/generated/prisma (gitignored).
 
 generator client {
   provider = "prisma-client"
-  output   = "../lib/generated/prisma"
+  output   = "../src/lib/generated/prisma"
 }
 
 datasource db {
@@ -42,7 +42,9 @@ model Split {
   taxCents        Int       @default(0)
   tipCents        Int       @default(0)
   mode            SplitMode @default(ITEMIZED)
-  shareToken      String    @unique @default(cuid())
+  // The payer link credential. Set by the app with newToken() (128-bit, base62);
+  // older splits keep their original cuid tokens so links already sent still work.
+  shareToken      String    @unique
 
   people    Person[]
   items     LineItem[]
