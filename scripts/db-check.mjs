@@ -4,20 +4,22 @@
 // prisma/schema.prisma and fails if they differ, so a deploy can never ship a
 // client that expects columns the database doesn't have.
 //
-// - On Vercel (VERCEL=1) or with --require, a missing DIRECT_URL fails the build.
-// - Locally without DIRECT_URL, it warns and skips, so `npm run build` still
-//   works on a fresh clone before a database exists.
+// - Production deploys (VERCEL_ENV=production) or --require: a missing
+//   DIRECT_URL fails the build, so production never ships unchecked.
+// - Preview deploys and local builds: if DIRECT_URL is set the check runs,
+//   otherwise it warns and skips. Previews usually don't get production
+//   database secrets, and they shouldn't be blocked for it.
 import "dotenv/config";
 import { spawnSync } from "node:child_process";
 
-const required = process.argv.includes("--require") || process.env.VERCEL === "1";
+const required = process.argv.includes("--require") || process.env.VERCEL_ENV === "production";
 
 if (!process.env.DIRECT_URL) {
   if (required) {
     console.error("db-check: DIRECT_URL is not set. Add it to the environment (Sensitive, server-only).");
     process.exit(1);
   }
-  console.warn("db-check: DIRECT_URL not set, skipping schema drift check (local build).");
+  console.warn(`db-check: DIRECT_URL not set, skipping schema drift check (${process.env.VERCEL_ENV || "local"} build).`);
   process.exit(0);
 }
 
