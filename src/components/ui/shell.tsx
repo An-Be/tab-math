@@ -8,7 +8,7 @@ const widths = {
   wide: "max-w-2xl",
 } as const;
 
-/** Mobile-first page column. Header and footer go inside it. */
+/** Mobile-first page column. The footer goes inside it; SiteHeader sits above it, full width. */
 export function Shell({
   children,
   width = "narrow",
@@ -18,5 +18,5 @@ export function Shell({
   width?: keyof typeof widths;
   className?: string;
 }) {
-  return <div className={cn("mx-auto flex min-h-dvh w-full flex-col px-4", widths[width], className)}>{children}</div>;
+  return <div className={cn("mx-auto flex w-full flex-1 flex-col px-4", widths[width], className)}>{children}</div>;
 }

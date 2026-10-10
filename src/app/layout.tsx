@@ -33,40 +33,41 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-const navLink = "label text-mute hover:text-ink";
+// Type and color come from the header's nav slot. Buttons reset text-transform, so restate uppercase.
+const navLink = "uppercase hover:text-ink";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${spaceGrotesk.variable} ${GeistMono.variable}`}>
-      <body className="min-h-dvh">
+      <body className="flex min-h-dvh flex-col">
         {/* dynamic: renders per request so Clerk can tag its own <script> with
             the CSP nonce (src/lib/clerk-csp.ts). Without it, a strict CSP blocks clerk-js. */}
         <ClerkProvider dynamic appearance={{ theme: shadcn, variables: { borderRadius: "0px" } }}>
+          <SiteHeader
+            right={
+              <>
+                <Link href="/splits" className={navLink}>
+                  My splits
+                </Link>
+                <Show when="signed-out">
+                  <SignInButton mode="modal">
+                    <button type="button" className={navLink}>
+                      Sign in
+                    </button>
+                  </SignInButton>
+                  <SignUpButton mode="modal">
+                    <button type="button" className="uppercase text-ink hover:text-mute">
+                      Sign up
+                    </button>
+                  </SignUpButton>
+                </Show>
+                <Show when="signed-in">
+                  <UserButton />
+                </Show>
+              </>
+            }
+          />
           <Shell width="wide">
-            <SiteHeader
-              right={
-                <>
-                  <Link href="/splits" className={navLink}>
-                    My splits
-                  </Link>
-                  <Show when="signed-out">
-                    <SignInButton mode="modal">
-                      <button type="button" className={navLink}>
-                        Sign in
-                      </button>
-                    </SignInButton>
-                    <SignUpButton mode="modal">
-                      <button type="button" className="label text-ink hover:text-mute">
-                        Sign up
-                      </button>
-                    </SignUpButton>
-                  </Show>
-                  <Show when="signed-in">
-                    <UserButton />
-                  </Show>
-                </>
-              }
-            />
             <main className="flex flex-1 flex-col py-8">{children}</main>
             <SiteFooter />
           </Shell>

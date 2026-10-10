@@ -11,6 +11,8 @@
   --color-mute: #555555;
   --color-faint: #8a8a8a;
   --color-wash: #f2f2f2;
+  /* Hairline for site chrome (the header rule). Content borders stay ink. */
+  --color-rule: #e5e5e5;
   --color-line: #000000;
   --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;

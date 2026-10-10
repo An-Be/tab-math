@@ -1,6 +1,6 @@
 <!-- BEGIN:nextjs-agent-rules -->
 
-# This is NOT the Next.js you know
+## This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 
@@ -115,7 +115,7 @@ scripts/db-check.mjs     build-time schema drift check
 - Client calls to our own API go through `api()` in `src/lib/api-client.ts`.
 - Pure logic belongs in `src/lib/*.ts` with a `*.test.ts` next to it.
 - `next/link` for internal links; plain `<a>` only for links that leave the app.
-- Colors come from tokens (`ink`, `paper`, `mute`, `faint`, `wash`). Type is
+- Colors come from tokens (`ink`, `paper`, `mute`, `faint`, `wash`, and `rule` for the header hairline). Type is
   `display` (Space Grotesk) or mono; small caps text uses the `label` utility.
   Sections are numbered with `SectionLabel`.
 - Inputs use 16px text on mobile so iOS doesn't zoom.
