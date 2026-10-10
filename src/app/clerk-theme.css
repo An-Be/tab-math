@@ -1,0 +1,32 @@
+/*
+  Clerk theme bridge. Clerk's components are styled with @clerk/ui's "shadcn"
+  theme, which reads shadcn-style CSS variables. The app itself no longer uses
+  shadcn, so these map those names onto the shared monochrome tokens.
+
+  Not optional polish: Clerk's unthemed modal had a real bug where its footer
+  strip wasn't covered by the modal's backdrop. The theme gives it one solid,
+  opaque surface. See AGENTS.md, "This tool".
+*/
+@import "@clerk/ui/themes/shadcn.css";
+
+:root {
+  --background: #ffffff;
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+  --primary: #000000;
+  --primary-foreground: #ffffff;
+  --secondary: #f2f2f2;
+  --secondary-foreground: #000000;
+  --muted: #f2f2f2;
+  --muted-foreground: #555555;
+  --accent: #f2f2f2;
+  --accent-foreground: #000000;
+  --destructive: #000000;
+  --border: #000000;
+  --input: #000000;
+  --ring: #000000;
+  --radius: 0px;
+}
