@@ -3,7 +3,9 @@ import { downscaleAndHash, extractLineItems } from "@/lib/server/ai-extract";
 import { getClientIp } from "@/lib/server/client-ip";
 import { db } from "@/lib/server/db";
 import { json, parseJsonBody, rejectCrossSite } from "@/lib/server/http";
+import { flushPostHogLogs, posthogLogger } from "@/lib/server/posthog-logs";
 import { checkRateLimit } from "@/lib/server/rate-limit";
+import { SeverityNumber } from "@opentelemetry/api-logs";
 import { requireSplitOwner } from "@/lib/server/require-split-owner";
 import { extractSchema } from "@/lib/split-schemas";
 
@@ -62,21 +64,28 @@ export async function POST(request: Request, { params }: RouteContext<"/api/spli
   const rateLimit = await checkRateLimit(`extract:${getClientIp(request)}`, { limit: 10, windowSeconds: 600 });
   if (!rateLimit.allowed) {
     console.warn("[extract] rate limited");
+    logExtraction(SeverityNumber.WARN, "rate_limited", result.userId, { retry_after_seconds: rateLimit.retryAfterSeconds });
     return Response.json(
       { error: "Too many receipt scans — try again in a bit." },
       { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } },
     );
   }
 
-  const extraction = await extractLineItems(base64, mediaType);
+  const extraction = await extractLineItems(base64, mediaType, { splitId: id, actorId: result.userId });
 
   if (!extraction.ok) {
     console.warn("[extract] failed after all model attempts (see attempt lines above)");
+    logExtraction(SeverityNumber.ERROR, "failed", result.userId);
     await db.split.update({ where: { id }, data: { receiptImageUrl: imageUrl } });
     return json({ ok: false, rawText: extraction.rawText });
   }
 
   const { items: extractedItems, taxCents, tipCents } = extraction.receipt;
+  logExtraction(SeverityNumber.INFO, "succeeded", result.userId, {
+    extracted_item_count: extractedItems.length,
+    tax_detected: taxCents !== null,
+    tip_detected: tipCents !== null,
+  });
 
   const items = await db.$transaction(async (tx) => {
     await tx.lineItem.deleteMany({ where: { splitId: id } });
@@ -107,4 +116,20 @@ export async function POST(request: Request, { params }: RouteContext<"/api/spli
     taxCents: taxCents ?? result.split.taxCents,
     tipCents: tipCents ?? result.split.tipCents,
   });
+}
+
+// Outcome + counts only; never receipt contents, the image URL or the split id.
+function logExtraction(
+  severityNumber: SeverityNumber,
+  outcome: "succeeded" | "failed" | "rate_limited",
+  actorId: string,
+  extra: Record<string, number | boolean> = {},
+) {
+  if (!posthogLogger) return;
+  posthogLogger.emit({
+    body: `receipt extraction ${outcome.replace("_", " ")}`,
+    severityNumber,
+    attributes: { event: "receipt_extraction_completed", outcome, posthogDistinctId: actorId, ...extra },
+  });
+  flushPostHogLogs();
 }

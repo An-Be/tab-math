@@ -6,6 +6,7 @@ import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
+import { track } from "@/lib/track";
 import { cn } from "@/lib/utils";
 import type { LineItem, Person, SplitMode } from "@/lib/generated/prisma/client";
 
@@ -69,6 +70,7 @@ export function ItemsList({
       return;
     }
     onItemsChange([...items, res.data.item]);
+    track("item_added", { item_count: items.length + 1 });
   }
 
   return (

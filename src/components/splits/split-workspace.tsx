@@ -15,6 +15,7 @@ import { api } from "@/lib/api-client";
 import type { Assignment, LineItem, Payment, Person, SplitMode } from "@/lib/generated/prisma/client";
 import type { PaymentHandles } from "@/lib/payment-links";
 import { toast } from "@/lib/toast";
+import { track } from "@/lib/track";
 
 type Props = {
   splitId: string;
@@ -126,6 +127,7 @@ export function SplitWorkspace({
       setAssignmentsByItem((prev) => ({ ...prev, [lineItemId]: current }));
       return;
     }
+    track("assignment_updated", { assigned_people_count: next.length });
     refreshTotals();
   }
 

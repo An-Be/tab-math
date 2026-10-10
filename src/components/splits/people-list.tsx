@@ -6,6 +6,7 @@ import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
+import { track } from "@/lib/track";
 import type { Person } from "@/lib/generated/prisma/client";
 
 type Props = {
@@ -30,6 +31,7 @@ export function PeopleList({ splitId, people, onPeopleChange }: Props) {
       return;
     }
     onPeopleChange([...people, res.data.person]);
+    track("person_added", { people_count: people.length + 1 });
     setName("");
   }
 

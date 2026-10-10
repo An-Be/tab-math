@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api-client";
 import { RECEIPT_MESSAGES, extractErrorMessage } from "@/lib/receipt-errors";
 import { useUploadThing } from "@/lib/uploadthing";
+import { track } from "@/lib/track";
 import type { LineItem } from "@/lib/generated/prisma/client";
 
 type Props = {
@@ -72,6 +73,11 @@ export function ReceiptUploader({
 
       const result = res.data;
       if (result?.ok && result.items) {
+        track("receipt_extracted", {
+          item_count: result.items.length,
+          has_tax: (result.taxCents ?? 0) > 0,
+          has_tip: (result.tipCents ?? 0) > 0,
+        });
         onExtracted(result.items, result.taxCents ?? 0, result.tipCents ?? 0);
       } else {
         onExtractFailed(result?.rawText ?? "");

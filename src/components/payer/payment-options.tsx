@@ -5,6 +5,7 @@ import { toast } from "@/lib/toast";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { copyToClipboard } from "@/lib/clipboard";
 import type { PaymentOption } from "@/lib/payment-links";
+import { track } from "@/lib/track";
 
 export function PaymentOptions({ options }: { options: PaymentOption[] }) {
   if (options.length === 0) {
@@ -27,6 +28,7 @@ export function PaymentOptions({ options }: { options: PaymentOption[] }) {
             onClick={async () => {
               const ok = await copyToClipboard(opt.value);
               if (ok) {
+                track("payment_method_selected", { payment_method: opt.type });
                 toast.success("Zelle info copied");
               } else {
                 toast.error("Couldn't copy — it's: " + opt.value);
@@ -44,6 +46,7 @@ export function PaymentOptions({ options }: { options: PaymentOption[] }) {
             target="_blank"
             rel="noopener noreferrer"
             className={buttonVariants({ size: "lg", block: true })}
+            onClick={() => track("payment_method_selected", { payment_method: opt.type })}
           >
             Pay with {opt.label}
           </a>

@@ -4,6 +4,7 @@ import { Copy } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { copyToClipboard } from "@/lib/clipboard";
+import { track } from "@/lib/track";
 import type { Person } from "@/lib/generated/prisma/client";
 
 type Props = {
@@ -11,9 +12,10 @@ type Props = {
   people: Person[];
 };
 
-async function copy(url: string, label: string) {
+async function copy(url: string, label: string, linkType: "general" | "direct") {
   const ok = await copyToClipboard(url);
   if (ok) {
+    track("share_link_copied", { link_type: linkType });
     toast.success(`${label} link copied`);
   } else {
     toast.error("Couldn't copy — long-press the link above to copy it manually");
@@ -33,7 +35,7 @@ export function ShareLink({ shareToken, people }: Props) {
         <p className="text-sm text-mute">
           Share this link anywhere — everyone taps their own name.
         </p>
-        <Button variant="outline" block className="justify-between normal-case tracking-normal" onClick={() => copy(fullUrl(), "Share")}>
+        <Button variant="outline" block className="justify-between normal-case tracking-normal" onClick={() => copy(fullUrl(), "Share", "general")}>
           <span className="truncate">{path}</span>
           <Copy className="size-4" aria-hidden="true" />
         </Button>
@@ -49,7 +51,7 @@ export function ShareLink({ shareToken, people }: Props) {
               size="sm"
               className="justify-between"
               aria-label={`Copy ${person.name}'s link`}
-              onClick={() => copy(fullUrl(`?as=${person.id}`), person.name)}
+              onClick={() => copy(fullUrl(`?as=${person.id}`), person.name, "direct")}
             >
               <span>{person.name}</span>
               <Copy className="size-3.5" aria-hidden="true" />

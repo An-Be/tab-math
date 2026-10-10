@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api-client";
+import { track } from "@/lib/track";
 import type { SplitMode } from "@/lib/generated/prisma/client";
 
 type Props = {
@@ -52,6 +53,7 @@ export function EvenSplitToggle({ splitId, mode, onChange, onSaved }: Props) {
               // Only now, once the database actually has the new mode, is it
               // safe to refetch totals — doing it alongside the optimistic
               // onChange above would race the save and could read the old mode.
+              track("split_mode_changed", { mode: newMode.toLowerCase() });
               onSaved();
             } else {
               onChange(mode);

@@ -6,6 +6,7 @@ import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Divider } from "@/components/ui/divider";
 import { api } from "@/lib/api-client";
+import { track } from "@/lib/track";
 import { cn } from "@/lib/utils";
 
 export type PersonTotal = {
@@ -45,7 +46,9 @@ export function TotalsList({ splitId, totals, paidPersonIds, onPaidChange }: Pro
     if (!res.ok) {
       toast.error("Couldn't update payment status");
       onPaidChange(personId, !paid);
+      return;
     }
+    track("payment_status_changed", { paid });
   }
 
   if (totals.people.length === 0) {

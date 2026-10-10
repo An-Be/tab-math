@@ -6,6 +6,7 @@ import localFont from "next/font/local";
 import Link from "next/link";
 import { GeistMono } from "geist/font/mono";
 import { SiteFooter } from "@/components/site/site-footer";
+import { PostHogIdentify } from "@/components/site/posthog-identify";
 import { SiteHeader } from "@/components/site/site-header";
 import { Shell } from "@/components/ui/shell";
 import { Toaster } from "@/components/ui/toaster";
@@ -72,6 +73,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <SiteFooter />
           </Shell>
           <Toaster />
+          <PostHogIdentify />
         </ClerkProvider>
       </body>
     </html>

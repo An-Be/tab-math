@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api-client";
 import { toast } from "@/lib/toast";
+import { track } from "@/lib/track";
 
 const FEATURE = "self-claim-items";
 const STORAGE_KEY = `feature-interest:${FEATURE}`;
@@ -35,6 +36,7 @@ export function FeatureInterestTeaser() {
       return;
     }
     setVoted(true);
+    track("feature_interest_submitted", { feature: FEATURE });
     try {
       localStorage.setItem(STORAGE_KEY, "1");
     } catch {

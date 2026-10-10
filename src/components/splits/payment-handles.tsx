@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
 import type { PaymentHandles } from "@/lib/payment-links";
 import { toast } from "@/lib/toast";
+import { track } from "@/lib/track";
 
 type Props = {
   splitId: string;
@@ -21,7 +22,11 @@ const FIELDS: { key: keyof PaymentHandles; label: string; placeholder: string }[
 export function PaymentHandlesForm({ splitId, handles }: Props) {
   async function save(key: keyof PaymentHandles, value: string) {
     const res = await api(`/api/splits/${splitId}`, { method: "PATCH", body: { paymentHandles: { [key]: value } } });
-    if (!res.ok) toast.error("Couldn't save that");
+    if (!res.ok) {
+      toast.error("Couldn't save that");
+      return;
+    }
+    track("payment_method_saved", { payment_method: key });
   }
 
   return (

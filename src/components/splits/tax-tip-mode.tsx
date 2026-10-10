@@ -6,6 +6,7 @@ import { toast } from "@/lib/toast";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
+import { track } from "@/lib/track";
 
 type Props = {
   splitId: string;
@@ -63,6 +64,7 @@ export function TaxTipMode({ splitId, taxCents, tipCents, onChange, onSaved }: P
               setSavingField(null);
               if (ok) {
                 onChange({ taxCents: cents });
+                track("tax_tip_updated", { field: "tax" });
                 onSaved();
               }
             }}
@@ -95,6 +97,7 @@ export function TaxTipMode({ splitId, taxCents, tipCents, onChange, onSaved }: P
               setSavingField(null);
               if (ok) {
                 onChange({ tipCents: cents });
+                track("tax_tip_updated", { field: "tip" });
                 onSaved();
               }
             }}

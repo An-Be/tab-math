@@ -1,7 +1,9 @@
 import "server-only";
 import { GoogleGenAI } from "@google/genai";
+import { PostHogGoogleGenAI } from "@posthog/ai/gemini";
+import { posthogServer } from "@/lib/server/posthog";
 import sharp from "sharp";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 const MAX_DIMENSION = 1568;
 // Primary, then a sibling model as a fallback if the primary keeps failing —
@@ -131,14 +133,24 @@ function describeError(err: unknown): string {
   return message.replace(/key=[^&\s"]+/gi, "key=[redacted]").slice(0, 300);
 }
 
+// LLM analytics (model, latency, tokens, cost, errors) when PostHog is on.
+// privacyMode keeps the receipt photo and the extracted items out of PostHog:
+// they're someone's receipt.
+const observedClient = posthogServer
+  ? new PostHogGoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, posthog: posthogServer })
+  : null;
+
 export async function extractLineItems(
   base64Image: string,
-  mediaType: "image/jpeg"
+  mediaType: "image/jpeg",
+  trace?: { splitId: string; actorId: string }
 ): Promise<ExtractResult> {
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  // One trace per scan; retries and the fallback model share it, and every scan
+  // of a split shares an AI session.
+  const traceId = randomUUID();
 
-  const call = (model: string) =>
-    client.models.generateContent({
+  const request = (model: string) => ({
       model,
       contents: [
         {
@@ -156,6 +168,17 @@ export async function extractLineItems(
       },
     });
 
+  const call = (model: string) =>
+    observedClient && trace
+      ? observedClient.models.generateContent({
+          ...request(model),
+          posthogDistinctId: trace.actorId,
+          posthogTraceId: traceId,
+          posthogPrivacyMode: true,
+          posthogProperties: { $ai_session_id: `split:${trace.splitId}` },
+        })
+      : client.models.generateContent(request(model));
+
   const attemptsPerModel = 2;
   let lastError: unknown;
   let lastText = "";
@@ -171,6 +194,7 @@ export async function extractLineItems(
         const receipt = parseReceipt(text);
         if (receipt) {
           console.info(`[extract] ${model} attempt ${attempt + 1}: ok in ${Date.now() - startedAt}ms`);
+          await posthogServer?.flush();
           return { ok: true, receipt };
         }
         lastText = text;
@@ -198,5 +222,6 @@ export async function extractLineItems(
       }
     }
   }
+  await posthogServer?.flush();
   return { ok: false, rawText: lastText || (lastError instanceof Error ? lastError.message : "") };
 }

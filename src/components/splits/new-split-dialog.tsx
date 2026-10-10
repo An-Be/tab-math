@@ -9,6 +9,7 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
 import { toast } from "@/lib/toast";
+import { track } from "@/lib/track";
 
 export function NewSplitDialog() {
   const router = useRouter();
@@ -45,6 +46,7 @@ export function NewSplitDialog() {
       toast.error(res.status === 0 ? "Something went wrong creating the split" : res.error);
       return;
     }
+    track("split_created", { initial_people_count: peopleNames.filter((p) => p.trim()).length });
     setOpen(false);
     router.push(`/split/${res.data.id}`);
   }

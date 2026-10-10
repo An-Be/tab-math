@@ -59,6 +59,7 @@ src/config/              site.ts (name, copy), csp.ts (CSP allowlist), routes.ts
 src/lib/                 pure logic, no JSX; safe on client and server
 src/lib/server/          server-only modules (each imports "server-only")
 src/proxy.ts             per-request nonce CSP
+src/instrumentation-client.ts  PostHog init (off without env vars)
 prisma/                  schema, migrations, sql/app-role.sql
 scripts/db-check.mjs     build-time schema drift check
 ```
@@ -88,6 +89,12 @@ scripts/db-check.mjs     build-time schema drift check
   CSP header. Add third-party origins in `src/config/csp.ts`, one comment per entry.
   Violations are logged by `/api/csp-report` (filter Vercel logs on `[csp]`).
 - **No inline `style` attributes.** Production CSP is nonce-only for styles.
+- **Analytics never carries a secret or a person.** Send events only through
+  `track()` (`src/lib/track.ts`) with flat counts, modes and outcomes: no names,
+  free text, tokens or per-person amounts. URLs are redacted by `redactEvent`
+  (`src/lib/analytics.ts`) from `secretPathPrefixes`; session replay stays off
+  unless a tool turns it on with full text masking. See
+  `docs/modules/analytics-posthog.md`.
 
 ## Database
 
@@ -175,6 +182,12 @@ Dev server runs on port 3200 (`npm run dev`).
   and drops the cookie. `getCurrentActor()` is the only place that resolves
   who is asking; never read `auth()` or the cookie directly.
 - **Uploadthing 7.7**: receipt photos (`src/app/api/uploadthing/core.ts`).
+- **PostHog** (`docs/modules/analytics-posthog.md`): browser events via
+  `track()`, organizer identify by Clerk id only (`posthog-identify.tsx`),
+  Gemini LLM analytics with `privacyMode: true` (no receipt photo or items),
+  and extraction outcome logs over OTLP (`src/lib/server/posthog-logs.ts`).
+  `/p/`, `/split/` and `/api/splits/` segments and every query string except
+  `utm_*` are redacted before send.
 - **Google Gemini** (`src/lib/server/ai-extract.ts`): line items + tax/tip via
   `responseJsonSchema`. `MODELS` is an ordered list (primary, then a sibling
   fallback after retries). Model names have changed before; a 404 names the
