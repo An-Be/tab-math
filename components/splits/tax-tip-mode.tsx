@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import posthog from "posthog-js";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -69,6 +70,7 @@ export function TaxTipMode({ splitId, taxCents, tipCents, onChange, onSaved }: P
               setSavingField(null);
               if (ok) {
                 onChange({ taxCents: cents });
+                posthog.capture("tax_tip_updated", { field: "tax" });
                 onSaved();
               }
             }}
@@ -104,6 +106,7 @@ export function TaxTipMode({ splitId, taxCents, tipCents, onChange, onSaved }: P
               setSavingField(null);
               if (ok) {
                 onChange({ tipCents: cents });
+                posthog.capture("tax_tip_updated", { field: "tip" });
                 onSaved();
               }
             }}

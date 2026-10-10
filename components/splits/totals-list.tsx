@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import posthog from "posthog-js";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
@@ -48,7 +49,9 @@ export function TotalsList({ splitId, totals, paidPersonIds, onPaidChange }: Pro
     if (!res.ok) {
       toast.error("Couldn't update payment status");
       onPaidChange(personId, !paid);
+      return;
     }
+    posthog.capture("payment_status_changed", { paid });
   }
 
   if (totals.people.length === 0) {

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import posthog from "posthog-js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ReceiptUploader } from "@/components/splits/receipt-uploader";
@@ -130,6 +131,9 @@ export function SplitWorkspace({
       setAssignmentsByItem((prev) => ({ ...prev, [lineItemId]: current }));
       return;
     }
+    posthog.capture("assignment_updated", {
+      assigned_people_count: next.length,
+    });
     refreshTotals();
   }
 

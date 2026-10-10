@@ -1,3 +1,5 @@
+import { SeverityNumber } from "@opentelemetry/api-logs";
+import { after } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -5,6 +7,7 @@ import { requireSplitOwner } from "@/lib/require-split-owner";
 import { downscaleAndHash, extractLineItems } from "@/lib/ai-extract";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/client-ip";
+import { posthogLogExporter, posthogLoggerProvider } from "@/instrumentation";
 
 // Explicit ceiling, above the worst case of every Gemini attempt timing out
 // (see GEMINI_CALL_TIMEOUT_MS in lib/ai-extract.ts), so the route always
@@ -14,6 +17,12 @@ export const maxDuration = 120;
 const extractSchema = z.object({
   imageUrl: z.string().url(),
 });
+
+function flushPostHogLogs() {
+  after(async () => {
+    await posthogLoggerProvider?.forceFlush();
+  });
+}
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -61,16 +70,39 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const rateLimit = await checkRateLimit(`extract:${ip}`, { limit: 10, windowSeconds: 600 });
   if (!rateLimit.allowed) {
     console.warn("[extract] rate limited");
+    posthogLogExporter?.emit({
+      body: "receipt extraction rate limited",
+      severityNumber: SeverityNumber.WARN,
+      attributes: {
+        event: "receipt_extraction_completed",
+        endpoint: "/api/splits/:id/extract",
+        outcome: "rate_limited",
+        retry_after_seconds: rateLimit.retryAfterSeconds,
+        posthogDistinctId: result.userId,
+      },
+    });
+    flushPostHogLogs();
     return NextResponse.json(
       { error: "Too many receipt scans — try again in a bit." },
       { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
     );
   }
 
-  const extraction = await extractLineItems(base64, mediaType);
+  const extraction = await extractLineItems(base64, mediaType, id, result.userId);
 
   if (!extraction.ok) {
     console.warn("[extract] failed after all model attempts (see attempt lines above)");
+    posthogLogExporter?.emit({
+      body: "receipt extraction completed",
+      severityNumber: SeverityNumber.ERROR,
+      attributes: {
+        event: "receipt_extraction_completed",
+        endpoint: "/api/splits/:id/extract",
+        outcome: "failed",
+        posthogDistinctId: result.userId,
+      },
+    });
+    flushPostHogLogs();
     await prisma.split.update({ where: { id }, data: { receiptImageUrl: imageUrl } });
     return NextResponse.json({ ok: false, rawText: extraction.rawText });
   }
@@ -99,6 +131,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     });
     return tx.lineItem.findMany({ where: { splitId: id }, orderBy: { sortOrder: "asc" } });
   });
+
+  posthogLogExporter?.emit({
+    body: "receipt extraction completed",
+    severityNumber: SeverityNumber.INFO,
+    attributes: {
+      event: "receipt_extraction_completed",
+      endpoint: "/api/splits/:id/extract",
+      outcome: "succeeded",
+      extracted_item_count: extractedItems.length,
+      tax_detected: taxCents !== null,
+      tip_detected: tipCents !== null,
+      posthogDistinctId: result.userId,
+    },
+  });
+  flushPostHogLogs();
 
   return NextResponse.json({
     ok: true,

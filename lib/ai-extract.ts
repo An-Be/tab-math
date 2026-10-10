@@ -1,6 +1,39 @@
 import { GoogleGenAI } from "@google/genai";
+import { PostHogGoogleGenAI } from "@posthog/ai/gemini";
+import { PostHog } from "posthog-node";
 import sharp from "sharp";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
+
+const posthogToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
+const posthogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST;
+
+if (!posthogToken && process.env.NODE_ENV === "development") {
+  throw new Error(
+    "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN is configured"
+  );
+}
+
+if (!posthogHost && process.env.NODE_ENV === "development") {
+  throw new Error(
+    "NEXT_PUBLIC_POSTHOG_HOST variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once NEXT_PUBLIC_POSTHOG_HOST is configured"
+  );
+}
+
+const posthog =
+  posthogToken && posthogHost
+    ? new PostHog(posthogToken, {
+        host: posthogHost,
+        flushAt: 1,
+        flushInterval: 0,
+        enableExceptionAutocapture: true,
+        privacyMode: false,
+      })
+    : null;
+
+const observedClient = posthog
+  ? new PostHogGoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, posthog })
+  : null;
+const baseClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const MAX_DIMENSION = 1568;
 // Primary, then a sibling model as a fallback if the primary keeps failing —
@@ -132,16 +165,20 @@ function describeError(err: unknown): string {
 
 export async function extractLineItems(
   base64Image: string,
-  mediaType: "image/jpeg"
+  mediaType: "image/jpeg",
+  splitId?: string,
+  actorId?: string
 ): Promise<ExtractResult> {
-  const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  // Each receipt scan is a turn. Retries and fallback calls share its trace,
+  // while every scan of this split is grouped in the same AI session.
+  const traceId = randomUUID();
 
-  const call = (model: string) =>
-    client.models.generateContent({
+  const call = (model: string) => {
+    const request = {
       model,
       contents: [
         {
-          role: "user",
+          role: "user" as const,
           parts: [
             { inlineData: { mimeType: mediaType, data: base64Image } },
             { text: EXTRACTION_PROMPT },
@@ -150,10 +187,22 @@ export async function extractLineItems(
       ],
       config: {
         httpOptions: { timeout: GEMINI_CALL_TIMEOUT_MS },
-        responseMimeType: "application/json",
+        responseMimeType: "application/json" as const,
         responseJsonSchema: RESPONSE_SCHEMA,
       },
-    });
+    };
+
+    if (observedClient && splitId && actorId) {
+      return observedClient.models.generateContent({
+        ...request,
+        posthogDistinctId: actorId,
+        posthogTraceId: traceId,
+        posthogProperties: { $ai_session_id: `split:${splitId}` },
+      });
+    }
+
+    return baseClient.models.generateContent(request);
+  };
 
   const attemptsPerModel = 2;
   let lastError: unknown;
@@ -170,6 +219,7 @@ export async function extractLineItems(
         const receipt = parseReceipt(text);
         if (receipt) {
           console.info(`[extract] ${model} attempt ${attempt + 1}: ok in ${Date.now() - startedAt}ms`);
+          await posthog?.flush();
           return { ok: true, receipt };
         }
         lastText = text;
@@ -197,5 +247,6 @@ export async function extractLineItems(
       }
     }
   }
+  await posthog?.flush();
   return { ok: false, rawText: lastText || (lastError instanceof Error ? lastError.message : "") };
 }

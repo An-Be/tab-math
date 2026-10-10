@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
+import posthog from "posthog-js";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -32,6 +33,9 @@ export function PeopleList({ splitId, people, onPeopleChange }: Props) {
       if (!res.ok) throw new Error();
       const { person } = await res.json();
       onPeopleChange([...people, person]);
+      posthog.capture("person_added", {
+        people_count: people.length + 1,
+      });
       setName("");
     } catch {
       toast.error("Couldn't add person");
