@@ -1,6 +1,7 @@
 "use client";
 
 import { toast } from "sonner";
+import posthog from "posthog-js";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { PaymentHandles } from "@/lib/payment-links";
@@ -24,7 +25,11 @@ export function PaymentHandlesForm({ splitId, handles }: Props) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ paymentHandles: { [key]: value } }),
     });
-    if (!res.ok) toast.error("Couldn't save that");
+    if (!res.ok) {
+      toast.error("Couldn't save that");
+      return;
+    }
+    posthog.capture("payment_method_saved", { payment_method: key });
   }
 
   return (

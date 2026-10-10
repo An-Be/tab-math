@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import posthog from "posthog-js";
 import { Switch } from "@/components/ui/switch";
 import type { SplitMode } from "@/lib/generated/prisma/client";
 
@@ -54,6 +55,7 @@ export function EvenSplitToggle({ splitId, mode, onChange, onSaved }: Props) {
               // Only now, once the database actually has the new mode, is it
               // safe to refetch totals — doing it alongside the optimistic
               // onChange above would race the save and could read the old mode.
+              posthog.capture("split_mode_changed", { mode: newMode.toLowerCase() });
               onSaved();
             } else {
               onChange(mode);

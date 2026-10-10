@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import posthog from "posthog-js";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -72,6 +73,7 @@ export function ItemsList({
       if (!res.ok) throw new Error();
       const { item } = await res.json();
       onItemsChange([...items, item]);
+      posthog.capture("item_added", { item_count: items.length + 1 });
     } catch {
       toast.error("Couldn't add item");
     } finally {

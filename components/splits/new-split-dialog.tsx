@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
+import posthog from "posthog-js";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,6 +57,9 @@ export function NewSplitDialog() {
       if (!res.ok) {
         throw new Error(typeof data?.error === "string" ? data.error : "Failed to create split");
       }
+      posthog.capture("split_created", {
+        initial_people_count: data.people?.length ?? 0,
+      });
       setOpen(false);
       router.push(`/split/${data.id}`);
     } catch (err) {

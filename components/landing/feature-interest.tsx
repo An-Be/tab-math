@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import posthog from "posthog-js";
 import { Button } from "@/components/ui/button";
 
 const FEATURE = "self-claim-items";
@@ -35,6 +36,7 @@ export function FeatureInterestTeaser() {
       });
       if (!res.ok) throw new Error();
       setVoted(true);
+      posthog.capture("feature_interest_submitted", { feature: FEATURE });
       try {
         localStorage.setItem(STORAGE_KEY, "1");
       } catch {

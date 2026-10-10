@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Camera, Loader2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
+import posthog from "posthog-js";
 import { Button } from "@/components/ui/button";
 import { useUploadThing } from "@/lib/uploadthing";
 import { RECEIPT_MESSAGES, extractErrorMessage, readJsonSafely } from "@/lib/receipt-errors";
@@ -76,6 +77,11 @@ export function ReceiptUploader({
         rawText?: string;
       } | null;
       if (result?.ok && result.items) {
+        posthog.capture("receipt_extracted", {
+          item_count: result.items.length,
+          has_tax: (result.taxCents ?? 0) > 0,
+          has_tip: (result.tipCents ?? 0) > 0,
+        });
         onExtracted(result.items, result.taxCents ?? 0, result.tipCents ?? 0);
       } else {
         onExtractFailed(result?.rawText ?? "");

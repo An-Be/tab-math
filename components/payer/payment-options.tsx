@@ -2,6 +2,7 @@
 
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
+import posthog from "posthog-js";
 import { Button } from "@/components/ui/button";
 import { copyToClipboard } from "@/lib/clipboard";
 import type { PaymentOption } from "@/lib/payment-links";
@@ -28,6 +29,7 @@ export function PaymentOptions({ options }: { options: PaymentOption[] }) {
             onClick={async () => {
               const ok = await copyToClipboard(opt.value);
               if (ok) {
+                posthog.capture("payment_method_selected", { payment_method: opt.type });
                 toast.success("Zelle info copied");
               } else {
                 toast.error("Couldn't copy — it's: " + opt.value);
@@ -44,6 +46,7 @@ export function PaymentOptions({ options }: { options: PaymentOption[] }) {
             nativeButton={false}
             size="lg"
             className="font-mono text-xs tracking-wide uppercase"
+            onClick={() => posthog.capture("payment_method_selected", { payment_method: opt.type })}
           >
             Pay with {opt.label}
           </Button>

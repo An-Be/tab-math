@@ -24,6 +24,11 @@ import type { ClerkMiddlewareOptions } from "@clerk/nextjs/server";
  */
 export const CSP_REPORT_PATH = "/api/csp-report";
 
+const posthogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST;
+const posthogAssetsHost = posthogHost
+  ? posthogHost.replace(/^(https:\/\/[^.]+)\.i\./, "$1-assets.i.")
+  : undefined;
+
 export const contentSecurityPolicy: NonNullable<ClerkMiddlewareOptions["contentSecurityPolicy"]> = {
   strict: true,
   reportOnly: true,
@@ -36,7 +41,10 @@ export const contentSecurityPolicy: NonNullable<ClerkMiddlewareOptions["contentS
       "https://api.uploadthing.com",
       "https://*.ufs.sh",
       "https://utfs.io",
+      ...(posthogHost ? [posthogHost] : []),
     ],
+    "script-src": posthogAssetsHost ? [posthogAssetsHost] : [],
+    "worker-src": ["blob:"],
     // blob: is the local receipt preview (URL.createObjectURL) before upload.
     "img-src": ["blob:", "data:", "https://*.ufs.sh", "https://utfs.io"],
     "font-src": ["self"],
