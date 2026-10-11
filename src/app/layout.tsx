@@ -23,7 +23,7 @@ const spaceGrotesk = localFont({
 });
 
 export const metadata: Metadata = {
-  title: site.name,
+  title: site.title,
   description: site.description,
   robots: site.indexable ? undefined : { index: false, follow: false },
 };
