@@ -23,9 +23,28 @@
   --radius-xl: 0px;
 }
 
+/*
+  Dark mode follows the device setting: the same monochrome system, inverted.
+  Only token values change, so every utility (bg-ink, text-mute, border-rule...)
+  flips on its own. Never hard-code a color to "fix" one mode.
+*/
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-ink: #f2f2f2;
+    --color-paper: #0b0b0b;
+    --color-mute: #a6a6a6;
+    --color-faint: #767676;
+    --color-wash: #1c1c1c;
+    --color-rule: #262626;
+    --color-line: #f2f2f2;
+  }
+}
+
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
+    /* Native controls, scrollbars and autofill follow the active scheme. */
+    color-scheme: light dark;
   }
   body {
     background: var(--color-paper);

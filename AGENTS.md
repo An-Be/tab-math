@@ -122,7 +122,9 @@ scripts/db-check.mjs     build-time schema drift check
 - Client calls to our own API go through `api()` in `src/lib/api-client.ts`.
 - Pure logic belongs in `src/lib/*.ts` with a `*.test.ts` next to it.
 - `next/link` for internal links; plain `<a>` only for links that leave the app.
-- Colors come from tokens (`ink`, `paper`, `mute`, `faint`, `wash`, and `rule` for the header hairline). Type is
+- Colors come from tokens (`ink`, `paper`, `mute`, `faint`, `wash`, and `rule` for the header hairline). Dark mode follows the device
+  (`prefers-color-scheme`) by redefining those tokens in `globals.css`; never
+  hard-code a color or add `dark:` variants, and check both modes before shipping. Type is
   `display` (Space Grotesk) or mono; small caps text uses the `label` utility.
   Sections are numbered with `SectionLabel`.
 - Inputs use 16px text on mobile so iOS doesn't zoom.
