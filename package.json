@@ -57,5 +57,10 @@
   },
   "engines": {
     "node": ">=20.9"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.2",
+    "mysql2": "^3.24.5",
+    "effect": "^3.22.2"
   }
 }
