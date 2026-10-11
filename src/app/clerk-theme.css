@@ -10,23 +10,24 @@
 @import "@clerk/ui/themes/shadcn.css";
 
 :root {
-  --background: #ffffff;
-  --foreground: #000000;
-  --card: #ffffff;
-  --card-foreground: #000000;
-  --popover: #ffffff;
-  --popover-foreground: #000000;
-  --primary: #000000;
-  --primary-foreground: #ffffff;
-  --secondary: #f2f2f2;
-  --secondary-foreground: #000000;
-  --muted: #f2f2f2;
-  --muted-foreground: #555555;
-  --accent: #f2f2f2;
-  --accent-foreground: #000000;
-  --destructive: #000000;
-  --border: #000000;
-  --input: #000000;
-  --ring: #000000;
+  /* Point at the shared tokens (not hex) so the modal follows dark mode too. */
+  --background: var(--color-paper);
+  --foreground: var(--color-ink);
+  --card: var(--color-paper);
+  --card-foreground: var(--color-ink);
+  --popover: var(--color-paper);
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-ink);
+  --primary-foreground: var(--color-paper);
+  --secondary: var(--color-wash);
+  --secondary-foreground: var(--color-ink);
+  --muted: var(--color-wash);
+  --muted-foreground: var(--color-mute);
+  --accent: var(--color-wash);
+  --accent-foreground: var(--color-ink);
+  --destructive: var(--color-ink);
+  --border: var(--color-ink);
+  --input: var(--color-ink);
+  --ring: var(--color-ink);
   --radius: 0px;
 }

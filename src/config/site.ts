@@ -5,6 +5,8 @@ export const site = {
   tagline: "Tiny tools for getting paid fairly.",
   author: { name: "Andrea", url: "https://andreaberrocal.com" },
   themeColor: "#ffffff",
+  /** Browser UI color in dark mode; matches --color-paper there. */
+  themeColorDark: "#0b0b0b",
   /** The landing page is public; organizer and payer pages send noindex headers. */
   indexable: true,
 } as const;
